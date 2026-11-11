@@ -103,8 +103,8 @@ test("four charts support pointer and keyboard, independent settings and battery
     assert.match(await battery.evaluate((badge) => getComputedStyle(badge).backgroundImage), /87%/);
     for (const [state, fill, label] of [["100", "100%", /100\s?%/], ["0", "0%", /0\s?%/], ["unavailable", "none", /—/]]) {
       await page.evaluate(({ tag, id, state }) => {
-        hass.states[id] = { ...hass.states[id], state };
-        document.querySelector(tag).hass = hass;
+        window.hass.states[id] = { ...window.hass.states[id], state };
+        document.querySelector(tag).hass = window.hass;
       }, { tag, id: config.battery_level_entity, state });
       assert.match(await battery.innerText(), label);
       assert.match(await battery.evaluate((badge) => getComputedStyle(badge).backgroundImage), new RegExp(fill));
@@ -124,7 +124,7 @@ test("four charts support pointer and keyboard, independent settings and battery
       assert.notEqual(await section.locator(".readout").innerText(), "");
     }
     assert.match(await card.locator('section[data-chart="voltage"] .readout').innerText(), /4,05 V · folyamatban/);
-    assert.equal(await page.evaluate(() => calls.length), 4);
+    assert.equal(await page.evaluate(() => window.calls.length), 4);
     const buttons = card.locator(".chart-controls .toggle:visible");
     for (const button of await buttons.all()) {
       await button.click();
@@ -132,17 +132,17 @@ test("four charts support pointer and keyboard, independent settings and battery
     }
     assert.equal(await card.locator(".chart:visible").count(), 0);
     await page.clock.fastForward(5 * 60_000);
-    assert.equal(await page.evaluate(() => calls.length), 4);
+    assert.equal(await page.evaluate(() => window.calls.length), 4);
     await buttons.first().click();
     await card.locator('section[data-chart="hourly"] canvas').waitFor();
-    assert.equal(await page.evaluate(() => calls.length), 5);
+    assert.equal(await page.evaluate(() => window.calls.length), 5);
 
     await page.evaluate(({ tag, id }) => {
-      hass.states[id] = { ...hass.states[id], state: "5000.002" };
-      document.querySelector(tag).hass = hass;
+      window.hass.states[id] = { ...window.hass.states[id], state: "5000.002" };
+      document.querySelector(tag).hass = window.hass;
     }, { tag, id: config.meter_entity });
     assert.match(await card.locator(".reading-row").innerText(), /^5\s?000,002\s*m³$/);
-    assert.equal(await page.evaluate(() => calls.length), 5);
+    assert.equal(await page.evaluate(() => window.calls.length), 5);
     await card.locator('section[data-chart="hourly"] .plot').focus();
     await page.keyboard.press("Home");
     assert.match(await card.locator('section[data-chart="hourly"] .readout').innerText(), /0,25 m³/);
@@ -150,7 +150,7 @@ test("four charts support pointer and keyboard, independent settings and battery
     const saved = await page.evaluate(async ({ tag, config }) => {
       const card = document.querySelector(tag);
       const editor = await card.constructor.getConfigElement();
-      editor.hass = hass;
+      editor.hass = window.hass;
       editor.setConfig({ ...config, animate_meter: true, cost: { enabled: true } });
       document.body.append(editor);
       let next;
@@ -189,9 +189,9 @@ test("narrow light layout, touch inspection and Recorder failure", { timeout: 60
     assert.match(await card.locator('section[data-chart="daily"] .readout').innerText(), /3,2 m³/);
     await page.evaluate(({ tag, id }) => {
       window.failVoltage = true;
-      hass.locale = { language: "en" };
-      hass.states[id] = { ...hass.states[id], state: "4224.1" };
-      document.querySelector(tag).hass = hass;
+      window.hass.locale = { language: "en" };
+      window.hass.states[id] = { ...window.hass.states[id], state: "4224.1" };
+      document.querySelector(tag).hass = window.hass;
     }, { tag, id: config.meter_entity });
     assert.equal(await card.locator("h2").textContent(), "Gas meter");
     await card.getByRole("button", { name: "Battery voltage" }).tap();
