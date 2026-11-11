@@ -1,0 +1,16 @@
+{
+  "name": "ha-card-gas-meter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/card.js --bundle --format=esm --target=es2022 --outfile=dist/ha-card-gas-meter.js",
+    "test": "node --test test/data.test.js",
+    "test:browser": "node --test test/browser.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright-core": "1.64.1",
+    "yaml": "2.9.0"
+  }
+}

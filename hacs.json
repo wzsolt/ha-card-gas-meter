@@ -1,0 +1,6 @@
+{
+  "name": "Gas Meter Card",
+  "filename": "ha-card-gas-meter.js",
+  "homeassistant": "2026.10.0",
+  "hide_default_branch": true
+}
