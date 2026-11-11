@@ -1,18 +1,39 @@
 name: HACS Validation
 
 on:
+  repository_dispatch:
+    types: [hacs-release-published]
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_call:
-  workflow_dispatch:
+    paths:
+      - .github/workflows/hacs.yml
 
 permissions:
   contents: read
+
+concurrency:
+  group: hacs-latest-release
+  cancel-in-progress: true
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
+      - name: Verify the latest stable release contains its Dashboard module
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          test -n "$tag"
+          filename="$(gh api --method GET "repos/$GITHUB_REPOSITORY/contents/hacs.json" \
+            -f ref="$tag" --jq .content | base64 --decode | jq -er '.filename')"
+          echo "Validating $tag ($filename)" >> "$GITHUB_STEP_SUMMARY"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$filename" \
+            --dir "$RUNNER_TEMP/hacs-release"
+          test -s "$RUNNER_TEMP/hacs-release/$filename"
+
       - uses: hacs/action@main
         with:
           category: plugin

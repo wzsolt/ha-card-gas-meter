@@ -2,7 +2,7 @@
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5)](https://github.com/wzsolt/ha-card-gas-meter#install)
 [![GitHub Actions](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/card.yml/badge.svg?branch=main)](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/card.yml)
-[![HACS Validation](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/hacs.yml/badge.svg?branch=main&event=push)](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/hacs.yml)
+[![HACS Validation](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/hacs.yml/badge.svg?branch=main)](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/hacs.yml)
 [![Release](https://img.shields.io/github/v/release/wzsolt/ha-card-gas-meter?label=release&color=blue)](https://github.com/wzsolt/ha-card-gas-meter/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
@@ -72,4 +72,4 @@ npm run test:browser
 
 Use `GAS_METER_CHROMIUM` to point the browser tests at an existing Chromium executable. The bundle is built at `dist/ha-card-gas-meter.js`. Pushes and pull requests run the unit tests, build and browser tests.
 
-To release, update the package version and lockfile, add a matching version section to `CHANGELOG.md`, and push the corresponding tag such as `v0.1.0`. GitHub Actions publishes the module as a release asset after the tests pass, verifies the asset and runs HACS validation. The release is the version HACS users can download. The module runs within the user's Home Assistant dashboard and reads data through the existing connection.
+To release, update the package version and lockfile, add a matching version section to `CHANGELOG.md`, and push the corresponding tag such as `v0.1.0`. GitHub Actions publishes the module as a release asset after the tests pass, and verifies the asset. The HACS Validation workflow then checks the latest stable release and updates the README badge. The module runs within the user's Home Assistant dashboard and reads data through the existing connection.
