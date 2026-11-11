@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0]
+
+- Add optional MVM residential gas cost estimates in HUF for the current day, month, gas year and billing period.
+- Show daily, monthly and gas-year cost charts with the tariff tiers, base fee and estimated tier corrections.
+- Add tariff and allowance settings to the visual editor and YAML, and mark missing consumption and delayed Recorder data.
+
 ## [0.1.1]
 
 - Remove the animated digit beside the meter reading. Existing YAML with `animate_meter` still loads.

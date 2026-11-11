@@ -1,11 +1,11 @@
 {
   "name": "ha-card-gas-meter",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "esbuild src/card.js --bundle --format=esm --target=es2022 --outfile=dist/ha-card-gas-meter.js",
-    "test": "node --test test/data.test.js",
+    "test": "node --test test/data.test.js test/cost.test.js",
     "test:browser": "node --test test/browser.test.js"
   },
   "devDependencies": {

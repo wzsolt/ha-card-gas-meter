@@ -86,7 +86,7 @@ export function calendar(zone, now) {
     const key = month(index - 11);
     return { key, start: midnight(key), partial: index === 11 };
   });
-  return { now, start, hourly, daily, monthly, localDate };
+  return { now, today, start, hourly, daily, monthly, localDate, midnight };
 }
 
 export function hourlyValues(buckets, rows, now) {
@@ -156,13 +156,18 @@ export async function fetchSeries(hass, key, id, dates) {
   const period = key === "monthly" ? "month" : "day";
   const buckets = period === "month" ? dates.monthly : dates.daily;
   const field = key === "voltage" ? "mean" : "change";
+  const rows = await recorderStatistics(hass, id, buckets[0].start, dates.now, period, field);
+  return statisticsValues(buckets, rows, dates, field, period);
+}
+
+export async function recorderStatistics(hass, id, start, end, period, field) {
   const result = await hass.callWS({
     type: "recorder/statistics_during_period",
     statistic_ids: [id],
-    start_time: iso(buckets[0].start),
-    end_time: iso(dates.now),
+    start_time: new Date(start).toISOString(),
+    end_time: new Date(end).toISOString(),
     period,
     types: [field],
   });
-  return statisticsValues(buckets, result[id] ?? [], dates, field, period);
+  return result[id] ?? [];
 }

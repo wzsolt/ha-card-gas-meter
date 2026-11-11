@@ -1,5 +1,7 @@
 import { CARD_TYPE, CHARTS, FIELDS, calendar, fetchSeries, normalizeConfig, numeric, sourceFor } from "./data.js";
 import { element, icon } from "./dom.js";
+import { CostPanel } from "./cost-panel.js";
+import { costEnabled } from "./cost.js";
 import { GasMeterEditor, loadEditorForm } from "./editor.js";
 import { Plot } from "./plot.js";
 import { cardStyles } from "./styles.js";
@@ -83,7 +85,12 @@ class GasMeterCard extends HTMLElement {
       charts.append(section);
       this.views.set(key, { button, buttonText, section, heading, subtitle, status, plot, note });
     }
-    content.append(header, this.controls, charts);
+    this.costPanel = new CostPanel(() => {
+      this.renderCost();
+      if (this.costPanel.visible) this.refresh(true);
+    });
+    this.controls.append(this.costPanel.button);
+    content.append(header, this.controls, charts, this.costPanel.node);
     card.append(content);
     this.shadowRoot.append(style, card);
   }
@@ -106,7 +113,8 @@ class GasMeterCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 3 + 4 * CHARTS.filter((key) => this._config?.charts[key] !== false).length;
+    const chartRows = 4 * CHARTS.filter((key) => this._config?.charts[key] !== false).length;
+    return 3 + chartRows + (costEnabled(this._config?.cost) ? 6 : 0);
   }
 
   getGridOptions() {
@@ -116,6 +124,7 @@ class GasMeterCard extends HTMLElement {
   setConfig(config) {
     this._config = normalizeConfig(config);
     this._visible = { ...this._config.charts };
+    this.costPanel.visible = true;
     this.resetCharts();
     this.update();
   }
@@ -127,18 +136,21 @@ class GasMeterCard extends HTMLElement {
 
   connectedCallback() {
     for (const { plot } of this.views.values()) plot.connect();
+    this.costPanel.plot.connect();
     this.update();
   }
 
   disconnectedCallback() {
     this.resetCharts();
     for (const { plot } of this.views.values()) plot.disconnect();
+    this.costPanel.plot.disconnect();
     this.scope = undefined;
   }
 
   resetCharts() {
     clearInterval(this.refreshTimer);
     this.refreshTimer = undefined;
+    this.costPanel.reset();
     for (const view of this.views.values()) {
       view.result = undefined;
       view.request = undefined;
@@ -156,6 +168,7 @@ class GasMeterCard extends HTMLElement {
     }
     this.renderSummary();
     this.renderCharts();
+    this.renderCost();
     this.refresh(true);
     if (!this.refreshTimer) this.refreshTimer = setInterval(() => this.refresh(), refreshInterval);
   }
@@ -228,6 +241,13 @@ class GasMeterCard extends HTMLElement {
     }
   }
 
+  renderCost() {
+    this.costPanel.render({
+      hass: this._hass, config: this._config, text: labels(this._hass),
+      locale: localeFor(this._hass), zone: this.scope.zone, themeMode: this.dataset.themeMode,
+    });
+  }
+
   toggleChart(key) {
     this._visible[key] = !this._visible[key];
     const view = this.views.get(key);
@@ -240,20 +260,27 @@ class GasMeterCard extends HTMLElement {
   refresh(initial = false) {
     if (typeof this._hass.callWS !== "function") return;
     let dates;
+    let hourly;
     for (const [key, view] of this.views) {
       const id = sourceFor(key, this._config);
       if (!this._visible[key] || !id || view.request || (initial && view.result)) continue;
       dates ??= calendar(this.scope.zone, Date.now());
-      this.loadChart(key, view, id, dates);
+      const series = fetchSeries(this._hass, key, id, dates);
+      if (key === "hourly") hourly = series;
+      this.loadChart(key, view, series);
+    }
+    if (costEnabled(this._config.cost) && this.costPanel.needsRefresh(initial, this._hass, this._config)) {
+      dates ??= calendar(this.scope.zone, Date.now());
+      this.costPanel.refresh(this._hass, this._config, dates, hourly);
     }
   }
 
-  async loadChart(key, view, id, dates) {
+  async loadChart(key, view, series) {
     const request = Symbol(key);
     view.request = request;
     let result;
     try {
-      result = { points: await fetchSeries(this._hass, key, id, dates) };
+      result = { points: await series };
     } catch {
       result = { error: true };
     }

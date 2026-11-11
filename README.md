@@ -50,6 +50,39 @@ Include the consumption and voltage sensors in Home Assistant Recorder. Today's 
 
 The cumulative consumption sensor should track usage independently of manual corrections to the physical meter reading. With Gas Reader, consumption is assigned to the time Home Assistant receives the report. A delayed report may therefore show several hours of usage in a single hour. Hours with an available, unchanged counter show zero recorded usage.
 
+## MVM residential gas cost estimates
+
+Enable **Estimated gas cost** in the visual editor to use the Hungarian MVM profile for monthly meter readings with heating and hot water. The estimate uses the existing consumption sensor in m³. The bill's gross discounted rate, heating value and volume correction factor are required. The following values are illustrative. Replace them with the values for your supply point and use the first day for which they apply.
+
+```yaml
+cost:
+  enabled: true
+  effective_from: "2026-08-01"
+  discounted_ft_per_mj: 2.86512
+  heating_value_mj_per_m3: 34.8
+  correction_factor: 1.0
+  billing_period_start: "2026-11-04"  # Optional. Update after reporting a reading.
+```
+
+| Cost option | Purpose |
+| --- | --- |
+| `enabled` | The cost section is off unless configured. Set to `false` to retain the settings while hiding it. |
+| `effective_from` | First date for which the configured inputs apply. The supported MVM profile starts on 2024-08-01. |
+| `discounted_ft_per_mj` | Gross discounted rate from your bill or local distributor's tariff, in Ft/MJ. |
+| `market_ft_per_mj` | Gross above-allowance rate. Defaults to 22.002 Ft/MJ. |
+| `base_ft_per_year` | Gross annual base fee. Defaults to 11,674 Ft for the standard A1 profile. Set to zero if there is no base fee. |
+| `heating_value_mj_per_m3` | Heating value from your bill, in MJ/m³. |
+| `correction_factor` | Meter volume correction factor from your bill. |
+| `annual_allowance_mj` | Annual discounted energy allowance. Defaults to 63,645 MJ. |
+| `monthly_weights` | Optional list of 12 nonnegative weights in January–December order. Defaults to the MVM monthly profile and scales to the configured annual allowance. |
+| `billing_period_start` | Optional first calendar day of the current billing period. Set it to the next period's first day after each reading. |
+
+The card converts recorded meter volume into MJ using your heating value and correction factor. It accumulates the MVM seasonal allowance from August 1 through July 31 and distributes each month's quota over its calendar days. Unused allowance carries forward within that year. When newly available allowance covers earlier usage above the cap, the difference is shown as an estimated tier correction. The total can be negative on a day with a correction. The card allocates one twelfth of the annual base fee per calendar month, then spreads that fee evenly across the days of the month.
+
+The three chart views cover 30 days, 12 calendar months, and up to four gas years. The latest day, month, and gas year are in progress. Missing days remain blank, and affected totals are marked as subtotals. After a gap the estimate starts with the next known day's allowance, so the earlier balance is unknown until the next gas year. Recent totals can lag if only Recorder statistics are available for today. The same configured inputs apply to all dates from their effective date. Estimates exclude one-off credits such as the January 2026 MVM credit.
+
+Sources: [MVM tariff tables](https://www.mvmnext.hu/foldgaz/egyetemes-szolgaltatas/ugyintezes/arak-dijszabasok/aktualis-arak), [seasonal allowance](https://www.mvmnext.hu/vallalati-informaciok/hirek-aktualitasok/aktualis/2024/08-01), [tier correction](https://www.mvmnext.hu/lakossagirezsi/gyakorikerdesek-foldgaz), and [January 2026 credit](https://www.mvmnext.hu/rezsistop/reszletes-informaciok).
+
 ## Develop and release
 
 ```sh

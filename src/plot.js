@@ -6,10 +6,10 @@ const top = 8;
 const right = 14;
 const bottom = 27;
 
-function range(points, voltage) {
+function range(points, voltage, signed) {
   const values = points.map(({ value }) => value).filter(Number.isFinite);
-  const min = voltage ? Math.min(...values) - 0.005 : 0;
-  const max = Math.max(...values) + (voltage ? 0.005 : 0);
+  const min = voltage ? Math.min(...values) - 0.005 : signed ? Math.min(0, ...values) : 0;
+  const max = voltage ? Math.max(...values) + 0.005 : Math.max(0, ...values);
   const rough = (max - min) / 3 || 0.1;
   const power = 10 ** Math.floor(Math.log10(rough));
   const step = ([1, 2, 2.5, 5, 10].find((unit) => unit * power >= rough) ?? 10) * power;
@@ -57,12 +57,15 @@ export class Plot {
     });
   }
 
-  setData(points, unit, locale, zone, text) {
+  setData(points, unit, locale, zone, text, options = {}) {
+    this.options = options;
     this.points = points;
     this.unit = unit;
     this.text = text;
     this.number = new Intl.NumberFormat(locale, { maximumFractionDigits: 6 });
-    this.axisNumber = new Intl.NumberFormat(locale, { maximumFractionDigits: 4 });
+    this.axisNumber = new Intl.NumberFormat(locale, options.compactAxis
+      ? { notation: "compact", maximumFractionDigits: 1 }
+      : { maximumFractionDigits: 4 });
     this.shortDate = new Intl.DateTimeFormat(locale, this.key === "monthly"
       ? { month: "short", timeZone: "UTC" }
       : { day: "numeric", month: "short", timeZone: "UTC" });
@@ -70,7 +73,7 @@ export class Plot {
       ? { month: "long", year: "numeric", timeZone: "UTC" }
       : { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
     this.offset = new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: "shortOffset" });
-    this.node.setAttribute("aria-label", text[this.key] + ". " + text.tooltipHelp);
+    this.node.setAttribute("aria-label", (options.label ?? text[this.key]) + ". " + text.tooltipHelp);
     this.select(this.index < points.length ? this.index : null);
   }
 
@@ -88,8 +91,9 @@ export class Plot {
     const point = this.points?.[this.index];
     let description = this.text?.tooltipHelp ?? "";
     if (point) {
-      const value = point.value === null ? this.text.missing : this.number.format(point.value) + " " + this.unit;
-      description = this.period(point) + " · " + value;
+      const value = point.value === null ? this.text.missing :
+        this.options.value?.(point) ?? this.number.format(point.value) + " " + this.unit;
+      description = (this.options.period?.(point) ?? this.period(point)) + " · " + value;
       if (point.partial) description += " · " + this.text.partial;
     }
     if (this.readout.textContent !== description) this.readout.textContent = description;
@@ -118,7 +122,7 @@ export class Plot {
     const style = getComputedStyle(this.node);
     // Canvas needs resolved colors. Read them from themed DOM properties.
     const colors = { line: style.color, text: getComputedStyle(this.readout).color, grid: style.borderTopColor };
-    const { start, end, step } = range(this.points, this.key === "voltage");
+    const { start, end, step } = range(this.points, this.key === "voltage", this.options.signed);
     const chartWidth = width - left - right;
     const chartHeight = height - top - bottom;
     const slot = chartWidth / this.points.length;
@@ -149,7 +153,8 @@ export class Plot {
     } else {
       const stride = Math.ceil(this.points.length / Math.max(2, Math.floor(chartWidth / 52)));
       for (let index = 0; index < this.points.length; index += stride) {
-        ctx.fillText(this.shortDate.format(this.points[index].key), x(index), height - 10);
+        const point = this.points[index];
+        ctx.fillText(this.options.tick?.(point) ?? this.shortDate.format(point.key), x(index), height - 10);
       }
     }
 
@@ -179,9 +184,12 @@ export class Plot {
         else ctx.fill();
       } else {
         const bar = Math.min(32, slot * 0.67);
-        const barHeight = Math.max(1, y(start) - y(value));
+        const zero = y(0);
+        const barHeight = Math.max(1, Math.abs(zero - y(value)));
+        const barTop = value < 0 ? zero : zero - barHeight;
         ctx.beginPath();
-        ctx.roundRect(x(index) - bar / 2, y(start) - barHeight, bar, barHeight, [3, 3, 0, 0]);
+        ctx.roundRect(x(index) - bar / 2, barTop, bar, barHeight,
+          value < 0 ? [0, 0, 3, 3] : [3, 3, 0, 0]);
         ctx.fill();
       }
     });
