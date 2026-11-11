@@ -71,16 +71,6 @@ async function mount(page, config, dark = true) {
         const [id] = request.statistic_ids;
         const [field] = request.types;
         if (window.failVoltage && field === "mean") throw new Error("Recorder unavailable");
-        if (request.period === "day" && field === "change" &&
-            [Date.parse("2026-07-31T22:00:00Z"), Date.parse("2026-10-31T23:00:00Z")].includes(start)) {
-          const rows = [];
-          for (let day = Date.UTC(2026, 7, 1); day < Date.UTC(2026, 10, 11); day += 24 * hour) {
-            const offset = day < Date.UTC(2026, 9, 26) ? 2 : 1;
-            const change = day === Date.UTC(2026, 10, 9) ? 10 : day === Date.UTC(2026, 10, 10) ? 0 : 1;
-            rows.push({ start: day - offset * hour, change });
-          }
-          return { [id]: rows };
-        }
         const rows = request.period === "month"
           ? [{ start, change: 42.3 }, { start: Date.parse("2026-10-31T23:00:00Z"), change: 21.4 }]
           : [{ start, [field]: field === "mean" ? 4.074 : 3.2 },
@@ -101,10 +91,11 @@ test("four charts support pointer and keyboard, independent settings and battery
     const page = await browser.newPage({ viewport: { width: 880, height: 850 }, colorScheme: "dark" });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error));
-    await mount(page, config);
+    await mount(page, { ...config, cost: { enabled: true } });
     const card = page.locator(tag);
     await card.locator('section[data-chart="voltage"] canvas').waitFor();
     assert.equal(await card.locator(".chart:visible").count(), 4);
+    assert.equal(await card.locator(".cost-panel").count(), 0);
     assert.match(await card.locator(".reading-row").innerText(), /4\s?223,532\s*m³/);
     assert.match(await card.locator(".last_contact_entity").innerText(), /10:25/);
     const battery = card.locator(".battery_level_entity");
@@ -160,11 +151,12 @@ test("four charts support pointer and keyboard, independent settings and battery
       const card = document.querySelector(tag);
       const editor = await card.constructor.getConfigElement();
       editor.hass = hass;
-      editor.setConfig({ ...config, animate_meter: true });
+      editor.setConfig({ ...config, animate_meter: true, cost: { enabled: true } });
       document.body.append(editor);
       let next;
       editor.addEventListener("config-changed", ({ detail }) => { next = detail.config; });
       const form = editor.shadowRoot.querySelector("ha-form");
+      if (form.schema.some(({ name }) => name === "cost")) throw new Error("Legacy cost editor is visible");
       form.edit("show_voltage", false);
       card.setConfig(next);
       return next;
@@ -205,101 +197,6 @@ test("narrow light layout, touch inspection and Recorder failure", { timeout: 60
     await card.getByRole("button", { name: "Battery voltage" }).tap();
     await card.getByText("Could not load Recorder data.").waitFor();
     assert.match(await card.locator(".reading-value").textContent(), /4,224\.100/);
-  } finally {
-    await browser.close();
-  }
-});
-
-test("MVM cost editor, billing summary and interactive daily, monthly and gas-year views", { timeout: 60_000 }, async () => {
-  const browser = await chromium.launch({ executablePath: process.env.GAS_METER_CHROMIUM });
-  try {
-    const page = await browser.newPage({ viewport: { width: 520, height: 760 }, hasTouch: true });
-    const errors = [];
-    page.on("pageerror", (error) => errors.push(error));
-    const curve = "31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31";
-    const settings = {
-      ...config, charts: { hourly: true, daily: false, monthly: false, voltage: false },
-      cost: { enabled: false },
-    };
-    await mount(page, settings);
-    const card = page.locator(tag);
-    const panel = card.locator(".cost-panel");
-    assert.equal(await panel.isHidden(), true);
-    assert.equal(await page.evaluate(() => calls.length), 1);
-
-    const saved = await page.evaluate(async ({ tag, curve, settings }) => {
-      const card = document.querySelector(tag);
-      const editor = await card.constructor.getConfigElement();
-      editor.hass = hass;
-      editor.setConfig(settings);
-      document.body.append(editor);
-      let next;
-      editor.addEventListener("config-changed", ({ detail }) => { next = detail.config; });
-      const form = editor.shadowRoot.querySelector("ha-form");
-      for (const [field, value] of Object.entries({
-        enabled: true, effective_from: "2026-08-01", billing_period_start: "2026-11-04",
-        discounted_ft_per_mj: 2, market_ft_per_mj: 10, heating_value_mj_per_m3: 1,
-        correction_factor: 1, annual_allowance_mj: 365, base_ft_per_year: 0,
-        monthly_weights: curve,
-      })) {
-        form.edit(["cost", field], value);
-      }
-      card.setConfig(next);
-      return next;
-    }, { tag, curve, settings });
-    assert.deepEqual(saved.cost.monthly_weights, curve.split(", ").map(Number));
-    assert.equal(saved.cost.billing_period_start, "2026-11-04");
-    assert.equal(saved.cost.enabled, true);
-    await panel.locator("canvas").waitFor();
-    const totals = panel.locator(".cost-total");
-    for (const [index, expected] of [[0, "11 Ft"], [1, "111 Ft"], [2, "295 Ft"], [3, "105 Ft"]]) {
-      assert.equal(await totals.nth(index).locator("dd").first().textContent(), expected);
-    }
-    assert.equal(await page.evaluate(() => calls.filter((message) =>
-      message.type === "history/history_during_period").length), 2);
-
-    const plot = panel.locator(".plot");
-    const detail = panel.locator(".readout");
-    await plot.focus();
-    await page.keyboard.press("End");
-    assert.match(await detail.textContent(), /11 Ft.*Kereten túli díj 19 Ft.*Becsült sávkorrekció -8 Ft/);
-    await page.keyboard.press("ArrowLeft");
-    assert.match(await detail.textContent(), /-8 Ft.*Alapdíj 0 Ft.*Becsült sávkorrekció -8 Ft/);
-    await panel.getByRole("button", { name: "12 hónap" }).click();
-    await plot.focus();
-    await page.keyboard.press("End");
-    assert.match(await detail.textContent(), /november.*111 Ft/);
-    await panel.getByRole("button", { name: "Kedvezményes évek" }).tap();
-    await plot.focus();
-    await page.keyboard.press("End");
-    assert.match(await detail.textContent(), /2026.*2027.*295 Ft/);
-
-    await card.getByRole("button", { name: "Becsült gázköltség" }).click();
-    assert.equal(await panel.isHidden(), true);
-    const closedBefore = await page.evaluate(() => calls.filter(({ period }) => period === "day").length);
-    await page.clock.fastForward(5 * 60_000);
-    assert.equal(await page.evaluate(() => calls.filter(({ period }) => period === "day").length), closedBefore);
-
-    const opening = await page.evaluate((tag) => {
-      const editor = document.querySelector(tag + "-editor");
-      const form = editor.shadowRoot.querySelector("ha-form");
-      let next;
-      editor.addEventListener("config-changed", ({ detail }) => { next = detail.config; });
-      form.edit(["cost", "opening_date"], "2026-11-01");
-      form.edit(["cost", "opening_consumption_m3"], 90);
-      document.querySelector(tag).setConfig(next);
-      return next.cost;
-    }, tag);
-    assert.equal(opening.opening_date, "2026-11-01");
-    assert.equal(opening.opening_consumption_m3, 90);
-    await panel.locator("canvas").waitFor();
-    assert.equal(await totals.nth(1).locator("dd").first().textContent(), "95 Ft");
-    assert.equal(await totals.nth(2).locator("dd").first().textContent(), "95 Ft");
-    assert.match(await totals.nth(2).textContent(), /hiányzó napok/);
-    assert.doesNotMatch(await panel.textContent(), /Korábbi keret ismeretlen/);
-    assert.equal(await page.evaluate(() => calls.findLast(({ period }) => period === "day").start_time),
-      "2026-10-31T23:00:00.000Z");
-    assert.deepEqual(errors, []);
   } finally {
     await browser.close();
   }

@@ -1,5 +1,4 @@
-import { costDefaults, costEnabled, costNumberFields } from "./cost.js";
-import { CHARTS, FIELDS, normalizeConfig, numeric } from "./data.js";
+import { CHARTS, FIELDS, normalizeConfig } from "./data.js";
 import { element } from "./dom.js";
 import { labels } from "./text.js";
 
@@ -41,38 +40,16 @@ export class GasMeterEditor extends HTMLElement {
     if (this.text !== text) {
       this.text = text;
       this.form.computeLabel = ({ name }) => text[name.replace("show_", "")] || name;
-      this.form.computeHelper = ({ name }) => ({
-        monthly_weights: text.monthlyWeightsHelp,
-        opening_consumption_m3: text.openingConsumptionHelp,
-      })[name];
       this.form.schema = [
         { name: "title", selector: { text: {} } },
         ...FIELDS.map((name) => ({ name, selector: { entity: { filter: { domain: "sensor" } } } })),
         ...CHARTS.map((key) => ({ name: "show_" + key, selector: { boolean: {} } })),
-        {
-          name: "cost", type: "expandable", title: text.cost, icon: "mdi:cash",
-          schema: [
-            { name: "enabled", selector: { boolean: {} } },
-            { name: "effective_from", selector: { date: {} } },
-            { name: "billing_period_start", selector: { date: {} } },
-            ...costNumberFields.map((name) => ({
-              name, default: costDefaults[name], selector: { number: { mode: "box", min: 0, step: "any" } },
-            })),
-            { name: "monthly_weights", selector: { text: {} } },
-            { name: "opening_date", selector: { date: {} } },
-            { name: "opening_consumption_m3", selector: { number: { mode: "box", min: 0, step: "any" } } },
-          ],
-        },
       ];
     }
     if (this.renderedConfig !== this.config) {
-      const { title, charts, cost } = this.config;
-      const costData = { ...cost, enabled: costEnabled(cost) };
-      if (Array.isArray(costData.monthly_weights)) {
-        costData.monthly_weights = costData.monthly_weights.join(", ");
-      }
+      const { title, charts } = this.config;
       this.form.data = {
-        title, cost: costData,
+        title,
         ...Object.fromEntries(FIELDS.map((name) => [name, this.config[name]])),
         ...Object.fromEntries(CHARTS.map((key) => ["show_" + key, charts[key]])),
       };
@@ -88,17 +65,6 @@ export class GasMeterEditor extends HTMLElement {
       else delete next[field];
     }
     next.charts = Object.fromEntries(CHARTS.map((key) => [key, data["show_" + key] !== false]));
-    const cost = { ...data.cost };
-    for (const key of Object.keys(cost)) {
-      if (cost[key] === "" || cost[key] == null) delete cost[key];
-    }
-    if (typeof cost.monthly_weights === "string") {
-      const weights = cost.monthly_weights.split(",").map(numeric);
-      if (weights.length === 12 && weights.every((value) => value !== null)) cost.monthly_weights = weights;
-    }
-    if (this.config.cost || cost.enabled || Object.keys(cost).some((key) => key !== "enabled")) {
-      next.cost = cost;
-    }
     this.config = next;
     this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: next }, bubbles: true, composed: true,

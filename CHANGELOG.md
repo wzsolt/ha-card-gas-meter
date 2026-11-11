@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.0]
+
+- Move MVM cost estimates to the standalone [Gas Costs Card](https://github.com/wzsolt/ha-card-gas-costs). Follow the [migration instructions](https://github.com/wzsolt/ha-card-gas-meter#migrate-gas-cost-estimates) to keep the estimate.
+- Continue to load older dashboard YAML by ignoring its legacy `cost:` block.
+
 ## [0.3.0]
 
 - Accept an opening date and the gas used before it to initialize the MVM allowance balance.

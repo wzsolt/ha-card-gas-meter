@@ -87,20 +87,6 @@ h3 { font-size: 0.94rem; font-weight: 650; }
 .charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .charts:has(.chart:not([hidden])) { margin-top: 10px; }
 .chart { min-width: 0; padding: 10px; border: 1px solid color-mix(in srgb, var(--gas-text) 9%, transparent); border-radius: 14px; background: var(--gas-surface); }
-.cost-panel { margin-top: 10px; }
-[data-chart="cost"] { --accent: var(--gas-green); }
-.cost-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 122px), 1fr));
-  gap: 6px;
-  margin: 0 0 10px;
-}
-.cost-total { padding: 8px; border-radius: 8px; background: var(--gas-surface); }
-.cost-total dt { color: var(--gas-muted); font-size: 0.76rem; }
-.cost-total dd { margin: 3px 0 0; font-variant-numeric: tabular-nums; }
-.cost-total dd:not(.subtitle) { font-weight: 650; }
-.cost-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.cost-panel .readout { overflow-wrap: anywhere; }
 .chart-heading { align-items: center; margin-bottom: 8px; }
 .chart-heading .glyph { width: 30px; height: 30px; }
 .chart-heading ha-icon { --mdc-icon-size: 16px; }
