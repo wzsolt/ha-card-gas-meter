@@ -76,7 +76,7 @@ async function mount(page, config, dark = true) {
   }, { tag, config, dark, hour });
 }
 
-test("four charts support pointer and keyboard, independent settings and animation", { timeout: 60_000 }, async () => {
+test("four charts support pointer and keyboard, independent settings and battery fill", { timeout: 60_000 }, async () => {
   const browser = await chromium.launch({ executablePath: process.env.GAS_METER_CHROMIUM });
   try {
     const page = await browser.newPage({ viewport: { width: 880, height: 850 }, colorScheme: "dark" });
@@ -88,7 +88,17 @@ test("four charts support pointer and keyboard, independent settings and animati
     assert.equal(await card.locator(".chart:visible").count(), 4);
     assert.match(await card.locator(".reading-row").innerText(), /4\s?223,532\s*m³/);
     assert.match(await card.locator(".last_contact_entity").innerText(), /10:25/);
-    assert.match(await card.locator(".battery_level_entity").innerText(), /87\s?%/);
+    const battery = card.locator(".battery_level_entity");
+    assert.match(await battery.innerText(), /87\s?%/);
+    assert.match(await battery.evaluate((badge) => getComputedStyle(badge).backgroundImage), /87%/);
+    for (const [state, fill, label] of [["100", "100%", /100\s?%/], ["0", "0%", /0\s?%/], ["unavailable", "none", /—/]]) {
+      await page.evaluate(({ tag, id, state }) => {
+        hass.states[id] = { ...hass.states[id], state };
+        document.querySelector(tag).hass = hass;
+      }, { tag, id: config.battery_level_entity, state });
+      assert.match(await battery.innerText(), label);
+      assert.match(await battery.evaluate((badge) => getComputedStyle(badge).backgroundImage), new RegExp(fill));
+    }
     assert.equal(await card.getAttribute("data-theme-mode"), "dark");
     assert.equal(await card.locator(".charts").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length), 2);
 
@@ -117,13 +127,12 @@ test("four charts support pointer and keyboard, independent settings and animati
     await card.locator('section[data-chart="hourly"] canvas').waitFor();
     assert.equal(await page.evaluate(() => calls.length), 5);
 
-    const correction = await page.evaluate(({ tag, id }) => {
-      const card = document.querySelector(tag);
-      hass.states[id] = { ...hass.states[id], state: "5000" };
-      card.hass = hass;
-      return { animating: card.shadowRoot.querySelector(".reel-track").getAnimations().length, requests: calls.length };
+    await page.evaluate(({ tag, id }) => {
+      hass.states[id] = { ...hass.states[id], state: "5000.002" };
+      document.querySelector(tag).hass = hass;
     }, { tag, id: config.meter_entity });
-    assert.deepEqual(correction, { animating: 1, requests: 5 });
+    assert.match(await card.locator(".reading-row").innerText(), /^5\s?000,002\s*m³$/);
+    assert.equal(await page.evaluate(() => calls.length), 5);
     await card.locator('section[data-chart="hourly"] .plot').focus();
     await page.keyboard.press("Home");
     assert.match(await card.locator('section[data-chart="hourly"] .readout').innerText(), /0,25 m³/);
@@ -132,26 +141,18 @@ test("four charts support pointer and keyboard, independent settings and animati
       const card = document.querySelector(tag);
       const editor = await card.constructor.getConfigElement();
       editor.hass = hass;
-      editor.setConfig(config);
+      editor.setConfig({ ...config, animate_meter: true });
       document.body.append(editor);
       let next;
       editor.addEventListener("config-changed", ({ detail }) => { next = detail.config; });
       const form = editor.shadowRoot.querySelector("ha-form");
       form.edit("show_voltage", false);
-      form.edit("animate_meter", false);
       card.setConfig(next);
       return next;
     }, { tag, config });
     assert.equal(saved.charts.voltage, false);
-    assert.equal(saved.animate_meter, false);
+    assert.equal("animate_meter" in saved, false);
     assert.equal(saved.consumption_entity, config.consumption_entity);
-    const animations = await page.evaluate(({ tag, id }) => {
-      const card = document.querySelector(tag);
-      hass.states[id] = { ...hass.states[id], state: "5001" };
-      card.hass = hass;
-      return card.shadowRoot.querySelector(".reel-track").getAnimations().length;
-    }, { tag, id: config.meter_entity });
-    assert.equal(animations, 0);
     assert.equal(await card.locator('section[data-chart="voltage"]').isHidden(), true);
     assert.deepEqual(errors, []);
   } finally {
@@ -159,11 +160,11 @@ test("four charts support pointer and keyboard, independent settings and animati
   }
 });
 
-test("narrow light layout, touch inspection, reduced motion and Recorder failure", { timeout: 60_000 }, async () => {
+test("narrow light layout, touch inspection and Recorder failure", { timeout: 60_000 }, async () => {
   const browser = await chromium.launch({ executablePath: process.env.GAS_METER_CHROMIUM });
   try {
     const page = await browser.newPage({
-      viewport: { width: 335, height: 790 }, colorScheme: "light", hasTouch: true, reducedMotion: "reduce",
+      viewport: { width: 335, height: 790 }, colorScheme: "light", hasTouch: true,
     });
     const settings = { ...config, title: undefined, charts: { daily: true, hourly: false, monthly: false, voltage: false } };
     await mount(page, settings, false);
@@ -182,7 +183,6 @@ test("narrow light layout, touch inspection, reduced motion and Recorder failure
       document.querySelector(tag).hass = hass;
     }, { tag, id: config.meter_entity });
     assert.equal(await card.locator("h2").textContent(), "Gas meter");
-    assert.equal(await card.locator(".reel-track").evaluate((node) => node.getAnimations().length), 0);
     await card.getByRole("button", { name: "Battery voltage" }).tap();
     await card.getByText("Could not load Recorder data.").waitFor();
     assert.match(await card.locator(".reading-value").textContent(), /4,224\.100/);

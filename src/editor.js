@@ -43,14 +43,13 @@ export class GasMeterEditor extends HTMLElement {
       this.form.schema = [
         { name: "title", selector: { text: {} } },
         ...FIELDS.map((name) => ({ name, selector: { entity: { filter: { domain: "sensor" } } } })),
-        { name: "animate_meter", selector: { boolean: {} } },
         ...CHARTS.map((key) => ({ name: "show_" + key, selector: { boolean: {} } })),
       ];
     }
     if (this.renderedConfig !== this.config) {
-      const { title, animate_meter, charts } = this.config;
+      const { title, charts } = this.config;
       this.form.data = {
-        title, animate_meter,
+        title,
         ...Object.fromEntries(FIELDS.map((name) => [name, this.config[name]])),
         ...Object.fromEntries(CHARTS.map((key) => ["show_" + key, charts[key]])),
       };
@@ -59,7 +58,8 @@ export class GasMeterEditor extends HTMLElement {
   }
 
   change(data) {
-    const next = { ...this.config, animate_meter: data.animate_meter !== false };
+    const next = { ...this.config };
+    delete next.animate_meter;
     for (const field of ["title", ...FIELDS]) {
       if (data[field]?.trim()) next[field] = data[field].trim();
       else delete next[field];

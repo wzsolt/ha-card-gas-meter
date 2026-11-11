@@ -5,7 +5,6 @@ consumption_entity: sensor.garden_gas_consumption
 last_contact_entity: sensor.garden_gas_reader_last_contact
 battery_level_entity: sensor.garden_gas_reader_battery_level_estimated
 battery_voltage_entity: sensor.garden_gas_reader_battery_voltage
-animate_meter: true
 charts:
   hourly: true
   daily: true

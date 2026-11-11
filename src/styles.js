@@ -50,24 +50,6 @@ h3 { font-size: 0.94rem; font-weight: 650; }
 .reading-row { gap: 5px; flex-wrap: wrap; }
 .reading-value { font-size: clamp(1.35rem, 5cqi, 1.85rem); line-height: 1.15; font-weight: 700; font-variant-numeric: tabular-nums; }
 .reading-unit { color: var(--gas-muted); font-size: 0.84rem; font-weight: 600; }
-.reel {
-  position: relative;
-  width: 23px;
-  height: 16px;
-  flex: none;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--gas-amber) 45%, transparent);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--gas-amber) 11%, transparent);
-}
-.reel-track {
-  display: grid;
-  grid-template-rows: repeat(2, 16px);
-  transform: translateY(-50%);
-  text-align: center;
-  color: var(--gas-amber);
-  font: 700 0.73rem/16px ui-monospace, monospace;
-}
 .summary { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
 .chip, .toggle {
   display: inline-flex;
@@ -82,6 +64,13 @@ h3 { font-size: 0.94rem; font-weight: 650; }
   font: inherit;
   font-size: 0.78rem;
   font-weight: 650;
+}
+.battery_level_entity:is([data-level="good"], [data-level="low"]) {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, currentColor 17%, transparent) 0 var(--battery-fill),
+    transparent var(--battery-fill)
+  );
 }
 .chip ha-icon, .toggle ha-icon { --mdc-icon-size: 16px; }
 .chip-copy { display: flex; gap: 5px; flex-wrap: wrap; }

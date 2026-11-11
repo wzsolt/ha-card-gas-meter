@@ -22,7 +22,6 @@ consumption_entity: sensor.garden_gas_consumption
 last_contact_entity: sensor.garden_gas_reader_last_contact
 battery_level_entity: sensor.garden_gas_reader_battery_level_estimated
 battery_voltage_entity: sensor.garden_gas_reader_battery_voltage
-animate_meter: true
 charts:
   hourly: true
   daily: true
@@ -36,9 +35,8 @@ charts:
 | `meter_entity` | Physical meter reading. The card shows three decimal places. |
 | `consumption_entity` | Separate cumulative gas sensor with statistics support, such as a `total` or `total_increasing` gas sensor. Used by all consumption charts. |
 | `last_contact_entity` | Timestamp sensor for the last successful report. |
-| `battery_level_entity` | Estimated charge from 0 to 100 percent. |
+| `battery_level_entity` | Estimated charge from 0 to 100 percent. The badge shows the value as a percentage and fills its background proportionally. |
 | `battery_voltage_entity` | Voltage sensor with the `measurement` state class for mean statistics. |
-| `animate_meter` | Animate changes to the physical reading. Defaults to `true` and respects reduced motion. |
 | `charts.hourly` | Show today's consumption per hour, on a midnight-to-midnight axis. Defaults to `true`. |
 | `charts.daily` | Show the last 30 calendar days, including today. Defaults to `true`. |
 | `charts.monthly` | Show the last 12 calendar months, including this month. Defaults to `true`. |

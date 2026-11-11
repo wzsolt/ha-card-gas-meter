@@ -20,7 +20,6 @@ export function normalizeConfig(config) {
   }
   return {
     ...config,
-    animate_meter: config.animate_meter !== false,
     charts: Object.fromEntries(CHARTS.map((key) => [key, config.charts?.[key] !== false])),
   };
 }

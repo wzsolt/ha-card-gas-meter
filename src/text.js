@@ -1,7 +1,7 @@
 const en = {
   title: "Gas meter", meter_entity: "Meter reading", consumption_entity: "Gas consumption sensor",
   last_contact_entity: "Last report", battery_level_entity: "Battery (estimated)",
-  battery_voltage_entity: "Battery voltage sensor", animate_meter: "Animate meter",
+  battery_voltage_entity: "Battery voltage sensor",
   hourly: "Hourly consumption", daily: "Daily consumption", monthly: "Monthly consumption",
   voltage: "Battery voltage", hourlyShort: "Today", dailyShort: "30 days", monthlyShort: "12 months",
   voltageShort: "Voltage", hourlyRange: "Today · 00:00–24:00", dailyRange: "Last 30 calendar days",
@@ -15,7 +15,7 @@ const en = {
 const hu = {
   title: "Gázmérő", meter_entity: "Óraállás", consumption_entity: "Gázfogyasztás-szenzor",
   last_contact_entity: "Utolsó beküldés", battery_level_entity: "Akku (becsült)",
-  battery_voltage_entity: "Akkufeszültség-szenzor", animate_meter: "Gázóra animációja",
+  battery_voltage_entity: "Akkufeszültség-szenzor",
   hourly: "Óránkénti gázfogyasztás", daily: "Napi gázfogyasztás", monthly: "Havi gázfogyasztás",
   voltage: "Akkufeszültség", hourlyShort: "Ma", dailyShort: "30 nap", monthlyShort: "12 hónap",
   voltageShort: "Feszültség", hourlyRange: "Ma · 00:00–24:00", dailyRange: "Utolsó 30 naptári nap",

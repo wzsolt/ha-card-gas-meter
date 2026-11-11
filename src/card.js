@@ -40,16 +40,8 @@ class GasMeterCard extends HTMLElement {
     this.readingLabel = element("div", "reading-label");
     this.readingValue = element("span", "reading-value");
     this.readingUnit = element("span", "reading-unit");
-    this.reel = element("span", "reel");
-    this.reel.setAttribute("aria-hidden", "true");
-    this.reelTrack = element("span", "reel-track");
-    this.reelPrevious = element("span");
-    this.reelCurrent = element("span");
-    this.reelCurrent.textContent = "—";
-    this.reelTrack.append(this.reelPrevious, this.reelCurrent);
-    this.reel.append(this.reelTrack);
     const readingRow = element("div", "reading-row");
-    readingRow.append(this.reel, this.readingValue, this.readingUnit);
+    readingRow.append(this.readingValue, this.readingUnit);
     reading.append(this.readingLabel, readingRow);
 
     const chips = element("div", "summary");
@@ -124,8 +116,6 @@ class GasMeterCard extends HTMLElement {
   setConfig(config) {
     this._config = normalizeConfig(config);
     this._visible = { ...this._config.charts };
-    this.lastReading = undefined;
-    this.meterAnimation?.cancel();
     this.resetCharts();
     this.update();
   }
@@ -184,21 +174,6 @@ class GasMeterCard extends HTMLElement {
       new Intl.NumberFormat(locale, { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(reading);
     this.readingUnit.textContent = reading === null ? "" : meter.attributes?.unit_of_measurement || "m³";
 
-    const motion = config.animate_meter && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!motion) this.meterAnimation?.cancel();
-    if (reading !== this.lastReading) {
-      this.reelPrevious.textContent = this.reelCurrent.textContent;
-      this.reelCurrent.textContent = reading === null ? "—" : Math.abs(reading).toFixed(3).at(-1);
-      if (motion && reading !== null && this.lastReading != null) {
-        this.meterAnimation?.cancel();
-        this.meterAnimation = this.reelTrack.animate(
-          [{ transform: "translateY(0)" }, { transform: "translateY(-50%)" }],
-          { duration: 520, easing: "cubic-bezier(.2,.7,.2,1)" },
-        );
-      }
-    }
-    this.lastReading = reading;
-
     for (const { node, field, label, value } of this.chips) {
       label.textContent = text[field];
       const state = hass.states?.[config[field]]?.state;
@@ -213,6 +188,7 @@ class GasMeterCard extends HTMLElement {
         const battery = numeric(state);
         const available = battery !== null && battery >= 0 && battery <= 100;
         node.dataset.level = available ? (battery <= 20 ? "low" : "good") : "unknown";
+        node.style.setProperty("--battery-fill", available ? battery + "%" : "0%");
         value.textContent = available
           ? new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 }).format(battery / 100)
           : "—";
