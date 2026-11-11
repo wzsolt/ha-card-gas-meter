@@ -78,10 +78,4 @@ jobs:
 
   validate-hacs:
     needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: hacs/action@main
-        with:
-          category: plugin
-          comment: "false"
-          ignore: images
+    uses: ./.github/workflows/hacs.yml

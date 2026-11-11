@@ -1,5 +1,11 @@
 # Gas Meter Card
 
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5)](https://github.com/wzsolt/ha-card-gas-meter#install)
+[![GitHub Actions](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/card.yml/badge.svg?branch=main)](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/card.yml)
+[![HACS Validation](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/hacs.yml/badge.svg?branch=main)](https://github.com/wzsolt/ha-card-gas-meter/actions/workflows/hacs.yml)
+[![Release](https://img.shields.io/github/v/release/wzsolt/ha-card-gas-meter)](https://github.com/wzsolt/ha-card-gas-meter/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
 A Home Assistant dashboard card for a cumulative gas meter. It shows the physical meter reading, the last report and the estimated battery level alongside interactive hourly, daily and monthly consumption charts and a battery voltage chart.
 
 ## Install
