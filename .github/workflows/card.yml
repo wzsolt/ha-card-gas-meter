@@ -24,8 +24,12 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npx playwright-core install --with-deps chromium
-      - run: npm run test:browser
+      - name: Run browser tests with the runner's Chrome
+        run: |
+          set -euo pipefail
+          export GAS_METER_CHROMIUM="$(command -v google-chrome)"
+          google-chrome --version
+          npm run test:browser
       - uses: actions/upload-artifact@v7
         with:
           name: gas-meter-card

@@ -19,18 +19,29 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
-      - name: Verify the latest stable release contains its Dashboard module
+      - name: Identify the latest stable release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
           test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Validating $tag" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the release contains its Dashboard module
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
           filename="$(gh api --method GET "repos/$GITHUB_REPOSITORY/contents/hacs.json" \
-            -f ref="$tag" --jq .content | base64 --decode | jq -er '.filename')"
-          echo "Validating $tag ($filename)" >> "$GITHUB_STEP_SUMMARY"
-          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$filename" \
+            -f ref="$RELEASE_TAG" --jq .content | base64 --decode | jq -er '.filename')"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$filename" \
             --dir "$RUNNER_TEMP/hacs-release"
           test -s "$RUNNER_TEMP/hacs-release/$filename"
 
@@ -39,3 +50,49 @@ jobs:
           category: plugin
           comment: "false"
           ignore: images
+
+  publish-badge:
+    needs: validate
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.validate.outputs.tag != '' && (needs.validate.result == 'success' || needs.validate.result == 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the release version and HACS result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+        run: |
+          set -euo pipefail
+          repo="repos/$GITHUB_REPOSITORY"
+          branch=release-badge
+          latest="$(gh api "$repo/releases/latest" --jq .tag_name)"
+          if [[ "$latest" != "$RELEASE_TAG" ]]; then
+            echo "Skipping $RELEASE_TAG because $latest is now the latest release."
+            exit 0
+          fi
+
+          case "$VALIDATION_RESULT" in
+            success) color=brightgreen ;;
+            failure) color=red ;;
+            *) exit 1 ;;
+          esac
+          payload="$(jq -cn --arg tag "$RELEASE_TAG" --arg color "$color" \
+            '{schemaVersion: 1, label: "release", message: $tag, color: $color}')"
+          content="$(printf '%s\n' "$payload" | base64 | tr -d '\n')"
+
+          if ! gh api "$repo/git/ref/heads/$branch" --silent; then
+            gh api --method POST "$repo/git/refs" \
+              -f ref="refs/heads/$branch" -f sha="$GITHUB_SHA" --silent
+          fi
+
+          fields=(-f branch="$branch" -f message="Update release badge for $RELEASE_TAG" -f content="$content")
+          if current="$(gh api --method GET "$repo/contents/release.json" -f ref="$branch")"; then
+            previous="$(jq -er '.content | gsub("\\n"; "")' <<< "$current")"
+            if [[ "$previous" == "$content" ]]; then
+              exit 0
+            fi
+            fields+=(-f sha="$(jq -er '.sha' <<< "$current")")
+          fi
+          gh api --method PUT "$repo/contents/release.json" "${fields[@]}" --silent
