@@ -76,10 +76,21 @@ cost:
 | `annual_allowance_mj` | Annual discounted energy allowance. Defaults to 63,645 MJ. |
 | `monthly_weights` | Optional list of 12 nonnegative weights in January–December order. Defaults to the MVM monthly profile and scales to the configured annual allowance. |
 | `billing_period_start` | Optional first calendar day of the current billing period. Set it to the next period's first day after each reading. |
+| `opening_date` | Optional first day to use Home Assistant readings for that gas year. Must be on or after `effective_from`. |
+| `opening_consumption_m3` | Total metered consumption from August 1 up to the start of `opening_date`, in m³. Set both opening fields together. |
 
 The card converts recorded meter volume into MJ using your heating value and correction factor. It accumulates the MVM seasonal allowance from August 1 through July 31 and distributes each month's quota over its calendar days. Unused allowance carries forward within that year. When newly available allowance covers earlier usage above the cap, the difference is shown as an estimated tier correction. The total can be negative on a day with a correction. The card allocates one twelfth of the annual base fee per calendar month, then spreads that fee evenly across the days of the month.
 
 The three chart views cover 30 days, 12 calendar months, and up to four gas years. The latest day, month, and gas year are in progress. Missing days remain blank, and affected totals are marked as subtotals. After a gap the estimate starts with the next known day's allowance, so the earlier balance is unknown until the next gas year. Recent totals can lag if only Recorder statistics are available for today. The same configured inputs apply to all dates from their effective date. Estimates exclude one-off credits such as the January 2026 MVM credit.
+
+If you have reliable meter readings from before Home Assistant started collecting data, set the two opening fields under `cost`:
+
+```yaml
+  opening_date: "2026-11-01"
+  opening_consumption_m3: 150
+```
+
+The card uses the entered volume and the allowance accrued before that date to establish the starting balance. It uses the Recorder from the opening date onward for that gas year. The entered total has no daily breakdown, so earlier costs stay blank and totals spanning those days remain marked as partial. The opening balance only applies to its own gas year, and a later gap in the Recorder can make the balance uncertain again.
 
 Sources: [MVM tariff tables](https://www.mvmnext.hu/foldgaz/egyetemes-szolgaltatas/ugyintezes/arak-dijszabasok/aktualis-arak), [seasonal allowance](https://www.mvmnext.hu/vallalati-informaciok/hirek-aktualitasok/aktualis/2024/08-01), [tier correction](https://www.mvmnext.hu/lakossagirezsi/gyakorikerdesek-foldgaz), and [January 2026 credit](https://www.mvmnext.hu/rezsistop/reszletes-informaciok).
 

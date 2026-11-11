@@ -76,7 +76,7 @@ export class CostPanel {
       button.setAttribute("aria-pressed", String(period === this.period));
       button.textContent = text["cost_" + period];
     }
-    const issue = this.configIssue(hass, config) ?? (this.result?.future ? "costFuture" : undefined);
+    const issue = this.configIssue(hass, config) ?? this.result?.dateIssue;
     const view = issue ? undefined : this.result?.view;
     const points = view?.[this.period];
     const hasData = Boolean(points?.some(({ value }) => value !== null));
@@ -159,8 +159,10 @@ export class CostPanel {
   refresh(hass, config, dates, hourly) {
     const options = costOptions(config.cost);
     if (!options) return;
-    if (options.effective > dates.today) {
-      this.result = { future: true };
+    const dateIssue = options.effective > dates.today ? "costFuture" :
+      options.opening?.start > dates.today ? "costOpeningFuture" : undefined;
+    if (dateIssue) {
+      this.result = { dateIssue };
       this.render(this.context);
       return;
     }

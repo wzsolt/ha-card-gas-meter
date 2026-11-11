@@ -72,7 +72,7 @@ async function mount(page, config, dark = true) {
         const [field] = request.types;
         if (window.failVoltage && field === "mean") throw new Error("Recorder unavailable");
         if (request.period === "day" && field === "change" &&
-            start === Date.parse("2026-07-31T22:00:00Z")) {
+            [Date.parse("2026-07-31T22:00:00Z"), Date.parse("2026-10-31T23:00:00Z")].includes(start)) {
           const rows = [];
           for (let day = Date.UTC(2026, 7, 1); day < Date.UTC(2026, 10, 11); day += 24 * hour) {
             const offset = day < Date.UTC(2026, 9, 26) ? 2 : 1;
@@ -279,6 +279,26 @@ test("MVM cost editor, billing summary and interactive daily, monthly and gas-ye
     const closedBefore = await page.evaluate(() => calls.filter(({ period }) => period === "day").length);
     await page.clock.fastForward(5 * 60_000);
     assert.equal(await page.evaluate(() => calls.filter(({ period }) => period === "day").length), closedBefore);
+
+    const opening = await page.evaluate((tag) => {
+      const editor = document.querySelector(tag + "-editor");
+      const form = editor.shadowRoot.querySelector("ha-form");
+      let next;
+      editor.addEventListener("config-changed", ({ detail }) => { next = detail.config; });
+      form.edit(["cost", "opening_date"], "2026-11-01");
+      form.edit(["cost", "opening_consumption_m3"], 90);
+      document.querySelector(tag).setConfig(next);
+      return next.cost;
+    }, tag);
+    assert.equal(opening.opening_date, "2026-11-01");
+    assert.equal(opening.opening_consumption_m3, 90);
+    await panel.locator("canvas").waitFor();
+    assert.equal(await totals.nth(1).locator("dd").first().textContent(), "95 Ft");
+    assert.equal(await totals.nth(2).locator("dd").first().textContent(), "95 Ft");
+    assert.match(await totals.nth(2).textContent(), /hiányzó napok/);
+    assert.doesNotMatch(await panel.textContent(), /Korábbi keret ismeretlen/);
+    assert.equal(await page.evaluate(() => calls.findLast(({ period }) => period === "day").start_time),
+      "2026-10-31T23:00:00.000Z");
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

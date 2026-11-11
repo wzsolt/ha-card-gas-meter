@@ -41,7 +41,10 @@ export class GasMeterEditor extends HTMLElement {
     if (this.text !== text) {
       this.text = text;
       this.form.computeLabel = ({ name }) => text[name.replace("show_", "")] || name;
-      this.form.computeHelper = ({ name }) => name === "monthly_weights" ? text.monthlyWeightsHelp : undefined;
+      this.form.computeHelper = ({ name }) => ({
+        monthly_weights: text.monthlyWeightsHelp,
+        opening_consumption_m3: text.openingConsumptionHelp,
+      })[name];
       this.form.schema = [
         { name: "title", selector: { text: {} } },
         ...FIELDS.map((name) => ({ name, selector: { entity: { filter: { domain: "sensor" } } } })),
@@ -56,6 +59,8 @@ export class GasMeterEditor extends HTMLElement {
               name, default: costDefaults[name], selector: { number: { mode: "box", min: 0, step: "any" } },
             })),
             { name: "monthly_weights", selector: { text: {} } },
+            { name: "opening_date", selector: { date: {} } },
+            { name: "opening_consumption_m3", selector: { number: { mode: "box", min: 0, step: "any" } } },
           ],
         },
       ];

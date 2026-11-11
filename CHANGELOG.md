@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.0]
+
+- Accept an opening date and the gas used before it to initialize the MVM allowance balance.
+- Calculate costs from Home Assistant readings on and after the opening date for that gas year.
+
 ## [0.2.0]
 
 - Add optional MVM residential gas cost estimates in HUF for the current day, month, gas year and billing period.

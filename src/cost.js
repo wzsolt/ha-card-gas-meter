@@ -30,11 +30,19 @@ export function costOptions(config) {
   const values = Object.fromEntries(costNumberFields.map((field) => [
     field, numeric(config[field] ?? costDefaults[field]),
   ]));
-  const effective = dateKey(config.effective_from);
+  const effectiveDate = dateKey(config.effective_from);
+  const effective = Math.max(effectiveDate, firstMvmDay);
   const billingStart = dateKey(config.billing_period_start);
   const weights = config.monthly_weights ?? monthlyWeights;
-  if (effective === null || (config.billing_period_start && billingStart === null) ||
+  if (effectiveDate === null || (config.billing_period_start && billingStart === null) ||
       !Array.isArray(weights) || weights.length !== 12) return null;
+  const openingDate = dateKey(config.opening_date);
+  const openingVolume = numeric(config.opening_consumption_m3);
+  const hasOpening = [config.opening_date, config.opening_consumption_m3]
+    .some((value) => value != null && value !== "");
+  if (hasOpening && (openingDate === null || openingDate < effective ||
+      openingVolume === null || openingVolume < 0 ||
+      (openingDate === gasYearStart(openingDate) && openingVolume !== 0))) return null;
   const curve = weights.map(numeric);
   const weightTotal = curve.reduce((sum, value) => sum + value, 0);
   if (curve.some((value) => value === null || value < 0) || !(weightTotal > 0) ||
@@ -44,8 +52,8 @@ export function costOptions(config) {
       values.market_ft_per_mj < values.discounted_ft_per_mj) return null;
   return {
     ...values,
-    effective: Math.max(effective, firstMvmDay),
-    billingStart,
+    effective, billingStart,
+    opening: hasOpening ? { start: openingDate, volume: openingVolume } : null,
     monthlyAllowance: curve.map((weight) => values.annual_allowance_mj * (weight / weightTotal)),
   };
 }
@@ -62,7 +70,25 @@ export function gasYearStart(key, offset = 0) {
 }
 
 export function costHistoryStart(today, options) {
-  return Math.max(gasYearStart(today, -3), options.effective);
+  const first = Math.max(gasYearStart(today, -3), options.effective);
+  const opening = options.opening;
+  return opening && first >= gasYearStart(opening.start) && first < opening.start
+    ? opening.start : first;
+}
+
+function daysInMonth(key) {
+  return (monthStart(key, 1) - monthStart(key)) / dayMs;
+}
+
+function accruedAllowance(start, end, monthlyAllowance) {
+  let quota = 0;
+  for (let key = start; key < end; ) {
+    const monthEnd = monthStart(key, 1);
+    const days = (Math.min(end, monthEnd) - key) / dayMs;
+    quota += monthlyAllowance[new Date(key).getUTCMonth()] * days / daysInMonth(key);
+    key = monthEnd;
+  }
+  return quota;
 }
 
 export function dailyLedger(days, first, today, options) {
@@ -70,10 +96,19 @@ export function dailyLedger(days, first, today, options) {
   let used = 0;
   let uncertain = first !== gasYearStart(first);
   const ledger = new Map();
+  const opening = options.opening;
+  const openingYear = opening ? gasYearStart(opening.start) : null;
+  const mjPerM3 = options.heating_value_mj_per_m3 * options.correction_factor;
   for (let key = first; key <= today; key += dayMs) {
+    if (opening && key >= openingYear && key < opening.start) continue;
     if (key === gasYearStart(key)) {
       quota = 0;
       used = 0;
+      uncertain = false;
+    }
+    if (key === opening?.start) {
+      quota = accruedAllowance(openingYear, key, options.monthlyAllowance);
+      used = opening.volume * mjPerM3;
       uncertain = false;
     }
     const volume = days.get(key);
@@ -84,9 +119,9 @@ export function dailyLedger(days, first, today, options) {
       continue;
     }
     const month = new Date(key).getUTCMonth();
-    const daysInMonth = (monthStart(key, 1) - monthStart(key)) / dayMs;
-    const dailyQuota = options.monthlyAllowance[month] / daysInMonth;
-    const heat = volume * options.heating_value_mj_per_m3 * options.correction_factor;
+    const monthDays = daysInMonth(key);
+    const dailyQuota = options.monthlyAllowance[month] / monthDays;
+    const heat = volume * mjPerM3;
 
     // New quota first reprices previous usage above the cap. The remainder
     // and any unused quota from earlier days cover today's usage.
@@ -97,7 +132,7 @@ export function dailyLedger(days, first, today, options) {
     const discounted = discountedHeat * options.discounted_ft_per_mj;
     const market = (heat - discountedHeat) * options.market_ft_per_mj;
     const correction = repriced > 0 ? repriced * (options.discounted_ft_per_mj - options.market_ft_per_mj) : 0;
-    const base = options.base_ft_per_year / 12 / daysInMonth;
+    const base = options.base_ft_per_year / 12 / monthDays;
     ledger.set(key, {
       value: discounted + market + correction + base,
       discounted, market, correction, base, uncertain,

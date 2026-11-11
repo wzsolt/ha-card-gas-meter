@@ -123,3 +123,50 @@ test("keeps today's live total separate from closed days and labels a Recorder f
   assert.equal(calls[0].start_time, new Date(dates.start).toISOString());
   assert.equal(calls[1].end_time, new Date(dates.start - 1).toISOString());
 });
+
+test("seeds the November allowance once and prices Recorder readings from the opening date", async () => {
+  const opening = key("2026-11-01");
+  const today = opening + day;
+  const settings = options({
+    effective_from: "2026-09-01",
+    opening_date: "2026-11-01",
+    opening_consumption_m3: 16,
+  });
+  const days = new Map([[opening - day, 1000], [opening, 1], [today, 0]]);
+  const view = buildCostView(days, today, settings);
+  const [before, first, second] = view.daily.slice(-3);
+  assert.equal(before.value, null);
+  assert.equal(first.market, 60);
+  assert.equal(first.uncertain, false);
+  close(first.correction, -8 * 31 / 30);
+  close(second.correction, first.correction);
+  close(view.summary.costMonth.value, 60 + first.correction + second.correction);
+  assert.equal(view.summary.costMonth.incomplete, false);
+  assert.equal(view.summary.costYear.incomplete, true);
+
+  const dates = calendar("Europe/Budapest", key("2026-11-02T10:00:00Z"));
+  const hass = { callWS: async (message) => {
+    assert.equal(message.start_time, "2026-10-31T23:00:00.000Z");
+    return {};
+  } };
+  await fetchClosedDays(hass, "sensor.consumption", dates, settings);
+});
+
+test("accepts a zero opening volume, validates the pair, and resets at the next gas year", () => {
+  assert.equal(options({ opening_date: "2026-11-01" }), null);
+  assert.equal(options({ opening_consumption_m3: 1 }), null);
+  assert.equal(options({ opening_date: "2026-11-01", opening_consumption_m3: -1 }), null);
+  assert.equal(options({ opening_date: "2026-08-01", opening_consumption_m3: 1 }), null);
+  assert.equal(options({
+    effective_from: "2026-11-02", opening_date: "2026-11-01", opening_consumption_m3: 0,
+  }), null);
+  const settings = options({ opening_date: "2026-11-01", opening_consumption_m3: 0 });
+  const first = key("2026-11-01");
+  const nextYear = key("2027-08-01");
+  const ledger = dailyLedger(new Map([[first, 1], [nextYear, 1]]), first, nextYear, settings);
+  assert.equal(ledger.get(first).discounted, 12);
+  assert.equal(ledger.get(first).market, 0);
+  assert.equal(ledger.get(nextYear).discounted, 2);
+  assert.equal(ledger.get(nextYear).market, 50);
+  assert.equal(ledger.get(nextYear).uncertain, false);
+});
