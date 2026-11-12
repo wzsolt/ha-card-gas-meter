@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.0]
+
+- Show hourly gas consumption for the last 24 hours, including reports from before midnight.
+- Show the date and time when inspecting an hour and distinguish repeated hours during daylight saving changes.
+
 ## [1.0.0]
 
 - Move MVM cost estimates to the standalone [Gas Costs Card](https://github.com/wzsolt/ha-card-gas-costs). Follow the [migration instructions](https://github.com/wzsolt/ha-card-gas-meter#migrate-gas-cost-estimates) to keep the estimate.

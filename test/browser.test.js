@@ -9,7 +9,7 @@ const bundle = fileURLToPath(new URL("../dist/ha-card-gas-meter.js", import.meta
 const config = parse(await readFile(new URL("../examples/garden-gas-meter.yaml", import.meta.url), "utf8"));
 const tag = "ha-card-gas-meter";
 const fixedTime = Date.parse("2026-11-11T09:45:00Z");
-const hour = 3_600_000;
+const fiveMinutes = 300_000;
 
 async function mount(page, config, dark = true) {
   await page.clock.install({ time: fixedTime });
@@ -44,7 +44,7 @@ async function mount(page, config, dark = true) {
   });
   await page.addScriptTag({ path: bundle, type: "module" });
   await page.evaluate((tag) => customElements.whenDefined(tag).then(() => undefined), tag);
-  await page.evaluate(({ tag, config, dark, hour }) => {
+  await page.evaluate(({ tag, config, dark, fiveMinutes }) => {
     const entities = [
       [config.meter_entity, "4223.532", "m³"],
       [config.consumption_entity, "155.90", "m³"],
@@ -64,8 +64,8 @@ async function mount(page, config, dark = true) {
         if (request.type === "history/history_during_period") {
           return { [request.entity_ids[0]]: [
             { s: "154", lu: start / 1000 },
-            { s: "154.25", lc: (start + 1000 + 0.5 * hour) / 1000 },
-            { s: "155.9", lc: (start + 1000 + 10.5 * hour) / 1000 },
+            { s: "154.25", lc: (start + 1000 + fiveMinutes) / 1000 },
+            { s: "155.9", lc: (Date.parse(request.end_time) - fiveMinutes) / 1000 },
           ] };
         }
         const [id] = request.statistic_ids;
@@ -82,7 +82,7 @@ async function mount(page, config, dark = true) {
     card.setConfig(config);
     card.hass = window.hass;
     document.querySelector("main").append(card);
-  }, { tag, config, dark, hour });
+  }, { tag, config, dark, fiveMinutes });
 }
 
 test("four charts support pointer and keyboard, independent settings and battery fill", { timeout: 60_000 }, async () => {
@@ -112,7 +112,8 @@ test("four charts support pointer and keyboard, independent settings and battery
     assert.equal(await card.getAttribute("data-theme-mode"), "dark");
     assert.equal(await card.locator(".charts").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length), 2);
 
-    const checks = { hourly: /00:00 · 0,25 m³/, daily: /3,2 m³/, monthly: /42,3 m³/, voltage: /4,074 V/ };
+    assert.match(await card.locator('section[data-chart="hourly"] .subtitle').textContent(), /Elmúlt 24 óra/);
+    const checks = { hourly: /nov\. 10\. 10:45 · 0,25 m³/, daily: /3,2 m³/, monthly: /42,3 m³/, voltage: /4,074 V/ };
     for (const [key, expected] of Object.entries(checks)) {
       const section = card.locator('section[data-chart="' + key + '"]');
       await section.locator("canvas").hover({ position: { x: 48, y: 50 } });
@@ -124,6 +125,10 @@ test("four charts support pointer and keyboard, independent settings and battery
       assert.notEqual(await section.locator(".readout").innerText(), "");
     }
     assert.match(await card.locator('section[data-chart="voltage"] .readout').innerText(), /4,05 V · folyamatban/);
+    const hourly = card.locator('section[data-chart="hourly"]');
+    await hourly.locator(".plot").focus();
+    await page.keyboard.press("End");
+    assert.match(await hourly.locator(".readout").innerText(), /nov\. 11\. 10:00 · 1,65 m³ · folyamatban/);
     assert.equal(await page.evaluate(() => window.calls.length), 4);
     const buttons = card.locator(".chart-controls .toggle:visible");
     for (const button of await buttons.all()) {

@@ -44,7 +44,7 @@ charts:
 | `last_contact_entity` | Timestamp sensor for the last successful report. |
 | `battery_level_entity` | Estimated charge from 0 to 100 percent. The badge shows the value as a percentage and fills its background proportionally. |
 | `battery_voltage_entity` | Voltage sensor with the `measurement` state class for mean statistics. |
-| `charts.hourly` | Show today's consumption per hour, on a midnight-to-midnight axis. Defaults to `true`. |
+| `charts.hourly` | Show hourly consumption for the last 24 elapsed hours. Defaults to `true`. |
 | `charts.daily` | Show the last 30 calendar days, including today. Defaults to `true`. |
 | `charts.monthly` | Show the last 12 calendar months, including this month. Defaults to `true`. |
 | `charts.voltage` | Show daily mean voltage for the last 30 calendar days. Defaults to `true`. |
@@ -53,7 +53,7 @@ Use the four buttons on the card to change the current view. Set the defaults in
 
 ### Recorder and timing
 
-Include the consumption and voltage sensors in Home Assistant Recorder. Today's hourly chart uses the cumulative consumption history. The day, month and voltage charts use Recorder statistics, so the latest period can lag the live readings and is marked as in progress. Empty periods appear as gaps. The card uses the time zone configured in Home Assistant and distinguishes repeated hours by their UTC offset.
+Include the consumption and voltage sensors in Home Assistant Recorder. The hourly chart uses cumulative consumption history and clips the first and last hours to the rolling window. The day, month and voltage charts use Recorder statistics, so the latest period can lag the live readings and is marked as in progress. Empty periods appear as gaps. The card uses the time zone configured in Home Assistant and distinguishes repeated hours by their UTC offset.
 
 The cumulative consumption sensor should track usage independently of manual corrections to the physical meter reading. With Gas Reader, consumption is assigned to the time Home Assistant receives the report. A delayed report may therefore show several hours of usage in a single hour. Hours with an available, unchanged counter show zero recorded usage.
 

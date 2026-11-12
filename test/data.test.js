@@ -6,17 +6,31 @@ const zone = "Europe/Budapest";
 const ms = Date.parse;
 const row = (s, iso, field = "lc") => ({ s, [field]: ms(iso) / 1000 });
 
-test("uses the local midnight baseline, assigns increases by arrival hour, and leaves the future empty", () => {
-  const dates = calendar(zone, ms("2026-11-11T03:20:00Z"));
+test("clips both ends of the last 24 hours and includes reports before local midnight", () => {
+  const dates = calendar(zone, ms("2026-11-11T03:20:00.250Z"));
   const values = hourlyValues(dates.hourly, [
-    row("100", "2026-11-10T22:59:59Z", "lu"),
-    row("100.125", "2026-11-10T23:00:00Z"),
-    row("100.25", "2026-11-10T23:30:00Z"),
-    row("100.75", "2026-11-11T02:55:00Z"),
+    row("100", "2026-11-10T03:19:59Z", "lu"),
+    row("100.125", "2026-11-10T03:20:00Z"),
+    row("100.25", "2026-11-10T03:20:00.250Z"),
+    row("100.5", "2026-11-10T03:35:00Z"),
+    row("101", "2026-11-10T22:55:00Z"),
+    row("101.5", "2026-11-10T23:00:00Z"),
+    row("102.5", "2026-11-11T03:19:00Z"),
+    row("103.5", "2026-11-11T03:20:01Z"),
   ], dates.now);
-  assert.equal(new Date(dates.start).toISOString(), "2026-11-10T23:00:00.000Z");
-  assert.deepEqual(values.slice(0, 6).map(({ value }) => value), [0.25, 0, 0, 0.5, 0, null]);
-  assert.equal(values[4].partial, true);
+
+  const first = values[0];
+  const last = values.at(-1);
+  assert.equal(last.end - first.start, 86_400_000);
+  assert.equal(values.length, 25);
+  assert.equal(first.end, ms("2026-11-10T04:00:00Z"));
+  assert.equal(last.start, ms("2026-11-11T03:00:00Z"));
+  assert.deepEqual([first.label, first.value, first.partial], ["04:20", 0.375, false]);
+  assert.deepEqual([last.label, last.value, last.partial], ["04:00", 1, true]);
+  assert.deepEqual(values.filter(({ value }) => value > 0).map(({ label, value }) => [label, value]), [
+    ["04:20", 0.375], ["23:00", 0.5], ["00:00", 0.5], ["04:00", 1],
+  ]);
+  assert.ok(values.every(({ repeated }) => !repeated));
 });
 
 test("a missing opening state, unavailable sample and meter reset leave gaps", () => {
@@ -29,16 +43,19 @@ test("a missing opening state, unavailable sample and meter reset leave gaps", (
     row("1", "2026-11-11T05:15:00Z"),
     row("1.5", "2026-11-11T06:15:00Z"),
   ], dates.now);
-  assert.deepEqual(values.slice(0, 8).map(({ value }) => value), [null, null, 1, null, null, null, 0.5, 0]);
+  assert.deepEqual(values.slice(-8).map(({ value }) => value), [null, null, 1, null, null, null, 0.5, 0]);
   assert.equal(hourlyValues(dates.hourly, [], dates.now).every(({ value }) => value === null), true);
 });
 
 test("both clock changes use local hours and keep repeated consumption distinct", () => {
   const spring = calendar(zone, ms("2026-03-29T12:00:00Z"));
-  assert.equal(spring.hourly.length, 23);
+  assert.equal(spring.hourly.length, 24);
+  assert.equal(spring.hourly.at(-1).end - spring.hourly[0].start, 86_400_000);
   assert.equal(spring.hourly.some(({ label }) => label === "02:00"), false);
   const fall = calendar(zone, ms("2026-10-25T12:00:00Z"));
-  assert.equal(fall.hourly.length, 25);
+  assert.equal(fall.hourly.length, 24);
+  assert.equal(fall.hourly.at(-1).end - fall.hourly[0].start, 86_400_000);
+  assert.equal(fall.hourly.at(-1).partial, false);
   const values = hourlyValues(fall.hourly, [
     row("20", "2026-10-24T21:59:59Z"),
     row("21", "2026-10-25T00:30:00Z"),
@@ -46,6 +63,10 @@ test("both clock changes use local hours and keep repeated consumption distinct"
   ], fall.now);
   const repeated = values.filter(({ label }) => label === "02:00");
   assert.deepEqual(repeated.map(({ value, repeated }) => [value, repeated]), [[1, true], [2, true]]);
+
+  const clippedFall = calendar(zone, ms("2026-10-26T00:15:00Z"));
+  assert.deepEqual(clippedFall.hourly.filter(({ repeated }) => repeated).map(({ label }) => label),
+    ["02:15", "02:00"]);
 });
 
 test("30 days and 12 months roll over by the local date, with gaps and partial statistics", () => {
@@ -69,7 +90,7 @@ test("30 days and 12 months roll over by the local date, with gaps and partial s
   assert.deepEqual(voltage.slice(-3).map(({ value }) => value), [null, 4.075, null]);
 });
 
-test("requests only the intended Recorder statistic and uses a pre-midnight opening state", async () => {
+test("requests only the intended Recorder statistic and fetches an opening state just before the rolling window", async () => {
   const calls = [];
   const hass = { callWS: async (message) => { calls.push(message); return {}; } };
   const dates = calendar(zone, ms("2026-11-11T09:15:00Z"));
@@ -79,7 +100,8 @@ test("requests only the intended Recorder statistic and uses a pre-midnight open
   await fetchSeries(hass, "monthly", "sensor.consumption", dates);
   await fetchSeries(hass, "voltage", "sensor.voltage", dates);
   assert.equal(calls[0].type, "history/history_during_period");
-  assert.equal(calls[0].start_time, "2026-11-10T22:59:59.000Z");
+  assert.equal(calls[0].start_time, "2026-11-10T09:14:59.000Z");
+  assert.equal(calls[0].end_time, "2026-11-11T09:15:00.000Z");
   assert.equal(calls[0].include_start_time_state, true);
   assert.deepEqual(calls[0].entity_ids, ["sensor.consumption"]);
   assert.deepEqual(calls[1].types, ["change"]);

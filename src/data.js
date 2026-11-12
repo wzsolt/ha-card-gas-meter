@@ -57,25 +57,37 @@ export function calendar(zone, now) {
     return high;
   }
   const today = localDate(now);
-  const start = midnight(today);
-  const end = midnight(today + day);
+  const start = now - day;
   const hourly = [];
-  let previousClockMinute;
-  for (let time = start; time < end; time += minute) {
+  function addHour(time, label) {
+    hourly.push({ key: localDate(time), start: time, end: now, label, partial: true });
+  }
+  function clockMinute(label) {
+    return Number(label.slice(0, 2)) * 60 + Number(label.slice(3));
+  }
+  const firstLabel = clockFormat.format(start);
+  addHour(start, firstLabel);
+  let previousClockMinute = clockMinute(firstLabel);
+  // Split at local hour boundaries or clock changes. Clip the outer buckets
+  // so that even on a clock change the window spans exactly 24 elapsed hours.
+  for (let time = Math.floor(start / minute) * minute + minute; time <= now; time += minute) {
     const label = clockFormat.format(time);
-    const clockMinute = Number(label.slice(0, 2)) * 60 + Number(label.slice(3));
-    if (time === start || clockMinute % 60 === 0 || clockMinute !== previousClockMinute + 1) {
-      if (hourly.length) hourly.at(-1).end = time;
-      hourly.push({ start: time, end, label, partial: false });
+    const currentClockMinute = clockMinute(label);
+    if (currentClockMinute % 60 === 0 || currentClockMinute !== (previousClockMinute + 1) % 1440) {
+      const previousHour = hourly.at(-1);
+      previousHour.end = time;
+      previousHour.partial = false;
+      if (time < now) addHour(time, label);
     }
-    previousClockMinute = clockMinute;
+    previousClockMinute = currentClockMinute;
   }
+  const hourKey = ({ key, label }) => key + ":" + label.slice(0, 2);
   const counts = new Map();
-  for (const { label } of hourly) counts.set(label, (counts.get(label) ?? 0) + 1);
   for (const bucket of hourly) {
-    bucket.repeated = counts.get(bucket.label) > 1;
-    bucket.partial = bucket.start <= now && now < bucket.end;
+    const key = hourKey(bucket);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
+  for (const bucket of hourly) bucket.repeated = counts.get(hourKey(bucket)) > 1;
   const date = new Date(today);
   const month = (offset) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1);
   const daily = Array.from({ length: 30 }, (_, index) => {
@@ -86,7 +98,7 @@ export function calendar(zone, now) {
     const key = month(index - 11);
     return { key, start: midnight(key), partial: index === 11 };
   });
-  return { now, today, start, hourly, daily, monthly, localDate, midnight };
+  return { now, hourly, daily, monthly, localDate };
 }
 
 export function hourlyValues(buckets, rows, now) {
@@ -143,8 +155,8 @@ export async function fetchSeries(hass, key, id, dates) {
       type: "history/history_during_period",
       entity_ids: [id],
       // Recorder labels the synthetic opening state with the request start.
-      // Request a second before midnight so it cannot be mistaken for a change.
-      start_time: iso(dates.start - 1000),
+      // Fetch a baseline just before the 24-hour window.
+      start_time: iso(dates.hourly[0].start - 1000),
       end_time: iso(dates.now),
       include_start_time_state: true,
       minimal_response: true,

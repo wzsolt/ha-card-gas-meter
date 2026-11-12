@@ -35,7 +35,14 @@ export class Plot {
       if (!this.points?.length) return;
       const rect = this.canvas.getBoundingClientRect();
       const relative = (event.clientX - rect.left - left) / (rect.width - left - right);
-      this.select(Math.max(0, Math.min(this.points.length - 1, Math.floor(relative * this.points.length))));
+      if (this.key === "hourly") {
+        const start = this.points[0].start;
+        const time = start + relative * (this.points.at(-1).end - start);
+        const index = this.points.findIndex(({ end }) => time < end);
+        this.select(index === -1 ? this.points.length - 1 : index);
+      } else {
+        this.select(Math.max(0, Math.min(this.points.length - 1, Math.floor(relative * this.points.length))));
+      }
     };
     this.canvas.addEventListener("pointermove", inspect);
     this.canvas.addEventListener("pointerdown", inspect);
@@ -69,6 +76,9 @@ export class Plot {
     this.longDate = new Intl.DateTimeFormat(locale, this.key === "monthly"
       ? { month: "long", year: "numeric", timeZone: "UTC" }
       : { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+    this.clock = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    });
     this.offset = new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: "shortOffset" });
     this.node.setAttribute("aria-label", text[this.key] + ". " + text.tooltipHelp);
     this.select(this.index < points.length ? this.index : null);
@@ -103,7 +113,7 @@ export class Plot {
     const offset = point.repeated
       ? " " + this.offset.formatToParts(point.start).find(({ type }) => type === "timeZoneName").value
       : "";
-    return point.label + offset;
+    return this.shortDate.format(point.key) + " " + point.label + offset;
   }
 
   draw() {
@@ -123,7 +133,15 @@ export class Plot {
     const chartWidth = width - left - right;
     const chartHeight = height - top - bottom;
     const slot = chartWidth / this.points.length;
-    const x = (index) => left + slot * (index + 0.5);
+    const hourly = this.key === "hourly";
+    const first = this.points[0];
+    const last = this.points.at(-1);
+    const timeX = (time) => left + chartWidth * (time - first.start) / (last.end - first.start);
+    const x = (index) => {
+      if (!hourly) return left + slot * (index + 0.5);
+      const point = this.points[index];
+      return timeX((point.start + point.end) / 2);
+    };
     const y = (value) => top + (end - value) / (end - start) * chartHeight;
     const line = lineKeys.has(this.key);
 
@@ -140,13 +158,19 @@ export class Plot {
 
     ctx.fillStyle = colors.text;
     ctx.textAlign = "center";
-    if (this.key === "hourly") {
-      for (const [index, point] of this.points.entries()) {
+    if (hourly) {
+      const axisY = height - 10;
+      ctx.fillText(first.label, left, axisY);
+      let previousX = left;
+      for (const point of this.points) {
         if (!["00:00", "06:00", "12:00", "18:00"].includes(point.label)) continue;
-        ctx.fillText(point.label, left + slot * index, height - 10);
+        const tickX = timeX(point.start);
+        if (tickX - previousX < 38 || width - right - tickX < 38) continue;
+        ctx.fillText(point.label, tickX, axisY);
+        previousX = tickX;
       }
       ctx.textAlign = "right";
-      ctx.fillText("24:00", width - 2, height - 10);
+      ctx.fillText(this.clock.format(last.end), width - 2, axisY);
     } else {
       const stride = Math.ceil(this.points.length / Math.max(2, Math.floor(chartWidth / 52)));
       for (let index = 0; index < this.points.length; index += stride) {
