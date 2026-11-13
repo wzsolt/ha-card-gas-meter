@@ -2,6 +2,8 @@ import { CHARTS, FIELDS, normalizeConfig } from "./data.js";
 import { element } from "./dom.js";
 import { labels } from "./text.js";
 
+const switches = [...CHARTS, "temperature"];
+
 export async function loadEditorForm() {
   if (customElements.get("ha-form")) return;
   const helpers = await window.loadCardHelpers?.();
@@ -42,8 +44,13 @@ export class GasMeterEditor extends HTMLElement {
       this.form.computeLabel = ({ name }) => text[name.replace("show_", "")] || name;
       this.form.schema = [
         { name: "title", selector: { text: {} } },
-        ...FIELDS.map((name) => ({ name, selector: { entity: { filter: { domain: "sensor" } } } })),
-        ...CHARTS.map((key) => ({ name: "show_" + key, selector: { boolean: {} } })),
+        ...FIELDS.map((name) => {
+          const filter = name === "temperature_entity"
+            ? { domain: "sensor", device_class: "temperature" }
+            : { domain: "sensor" };
+          return { name, selector: { entity: { filter } } };
+        }),
+        ...switches.map((key) => ({ name: "show_" + key, selector: { boolean: {} } })),
       ];
     }
     if (this.renderedConfig !== this.config) {
@@ -51,7 +58,7 @@ export class GasMeterEditor extends HTMLElement {
       this.form.data = {
         title,
         ...Object.fromEntries(FIELDS.map((name) => [name, this.config[name]])),
-        ...Object.fromEntries(CHARTS.map((key) => ["show_" + key, charts[key]])),
+        ...Object.fromEntries(switches.map((key) => ["show_" + key, charts[key]])),
       };
       this.renderedConfig = this.config;
     }
@@ -64,7 +71,7 @@ export class GasMeterEditor extends HTMLElement {
       if (data[field]?.trim()) next[field] = data[field].trim();
       else delete next[field];
     }
-    next.charts = Object.fromEntries(CHARTS.map((key) => [key, data["show_" + key] !== false]));
+    next.charts = Object.fromEntries(switches.map((key) => [key, data["show_" + key] !== false]));
     this.config = next;
     this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: next }, bubbles: true, composed: true,

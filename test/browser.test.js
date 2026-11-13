@@ -51,6 +51,7 @@ async function mount(page, config, dark = true) {
       [config.last_contact_entity, "2026-11-11T09:25:00+00:00"],
       [config.battery_level_entity, "87", "%"],
       [config.battery_voltage_entity, "4.074", "V"],
+      ...(config.temperature_entity ? [[config.temperature_entity, "-2", "°C"]] : []),
     ];
     window.calls = [];
     window.hass = {
@@ -62,6 +63,13 @@ async function mount(page, config, dark = true) {
         window.calls.push(request);
         const start = Date.parse(request.start_time);
         if (request.type === "history/history_during_period") {
+          if (request.entity_ids[0] === config.temperature_entity) {
+            if (window.failTemperature) throw new Error("Temperature history unavailable");
+            return { [config.temperature_entity]: [
+              { s: "-2", lu: start / 1000 },
+              { s: "6", lc: (Date.parse(request.end_time) - fiveMinutes) / 1000 },
+            ] };
+          }
           return { [request.entity_ids[0]]: [
             { s: "154", lu: start / 1000 },
             { s: "154.25", lc: (start + 1000 + fiveMinutes) / 1000 },
@@ -95,6 +103,7 @@ test("four charts support pointer and keyboard, independent settings and battery
     const card = page.locator(tag);
     await card.locator('section[data-chart="voltage"] canvas').waitFor();
     assert.equal(await card.locator(".chart:visible").count(), 4);
+    assert.equal(await card.getByRole("button", { name: "Hőmérséklet" }).count(), 0);
     assert.equal(await card.locator(".cost-panel").count(), 0);
     assert.match(await card.locator(".reading-row").innerText(), /4\s?223,532\s*m³/);
     assert.match(await card.locator(".last_contact_entity").innerText(), /10:25/);
@@ -202,6 +211,69 @@ test("narrow light layout, touch inspection and Recorder failure", { timeout: 60
     await card.getByRole("button", { name: "Battery voltage" }).tap();
     await card.getByText("Could not load Recorder data.").waitFor();
     assert.match(await card.locator(".reading-value").textContent(), /4,224\.100/);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("optional temperature overlay shares the hourly plot and can be toggled", { timeout: 60_000 }, async () => {
+  const browser = await chromium.launch({ executablePath: process.env.GAS_METER_CHROMIUM });
+  try {
+    const page = await browser.newPage({ viewport: { width: 420, height: 780 } });
+    const settings = {
+      ...config, temperature_entity: "sensor.outdoor_temperature",
+      charts: { hourly: true, temperature: false, daily: false, monthly: false, voltage: false },
+    };
+    await mount(page, settings);
+    const card = page.locator(tag);
+    const toggle = card.getByRole("button", { name: "Hőmérséklet" });
+    const hourly = card.locator('section[data-chart="hourly"]');
+    const plot = hourly.locator(".plot");
+    const readout = hourly.locator(".readout");
+    await plot.waitFor();
+    assert.equal(await toggle.getAttribute("aria-pressed"), "false");
+    assert.equal(await page.evaluate(() => window.calls.length), 1);
+
+    await toggle.click();
+    assert.equal(await toggle.getAttribute("aria-pressed"), "true");
+    await page.waitForFunction((tag) => document.querySelector(tag).views.get("hourly").plot.hasTemperature, tag);
+    assert.equal(await card.locator("canvas:visible").count(), 1);
+    await plot.focus();
+    await page.keyboard.press("Home");
+    assert.match(await readout.innerText(), /0,25 m³ · Hőmérséklet: -2 °C/);
+    await page.keyboard.press("End");
+    assert.match(await readout.innerText(), /1,65 m³ · Hőmérséklet: .* °C · folyamatban/);
+    assert.equal(await page.evaluate(() => {
+      const [, gas, temperature] = window.calls;
+      return gas.start_time === temperature.start_time && gas.end_time === temperature.end_time;
+    }), true);
+
+    await toggle.click();
+    assert.equal(await toggle.getAttribute("aria-pressed"), "false");
+    await plot.focus();
+    await page.keyboard.press("Home");
+    assert.doesNotMatch(await readout.innerText(), /°C/);
+
+    await page.evaluate(() => { window.failTemperature = true; });
+    await toggle.click();
+    await hourly.getByText("A hőmérséklet-adatok nem tölthetők be.").waitFor();
+    assert.equal(await plot.isVisible(), true);
+    assert.equal(await card.locator("canvas:visible").count(), 1);
+
+    const saved = await page.evaluate(async ({ tag, settings }) => {
+      const card = document.querySelector(tag);
+      const editor = await card.constructor.getConfigElement();
+      editor.hass = window.hass;
+      editor.setConfig(settings);
+      let saved;
+      editor.addEventListener("config-changed", (event) => { saved = event.detail.config; });
+      const form = editor.shadowRoot.querySelector("ha-form");
+      form.edit("temperature_entity", "sensor.garden_temperature");
+      form.edit("show_temperature", true);
+      return saved;
+    }, { tag, settings });
+    assert.equal(saved.temperature_entity, "sensor.garden_temperature");
+    assert.equal(saved.charts.temperature, true);
   } finally {
     await browser.close();
   }

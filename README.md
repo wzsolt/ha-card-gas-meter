@@ -29,11 +29,13 @@ consumption_entity: sensor.garden_gas_consumption
 last_contact_entity: sensor.garden_gas_reader_last_contact
 battery_level_entity: sensor.garden_gas_reader_battery_level_estimated
 battery_voltage_entity: sensor.garden_gas_reader_battery_voltage
+# temperature_entity: sensor.outdoor_temperature
 charts:
   hourly: true
   daily: true
   monthly: true
   voltage: true
+  temperature: true
 ```
 
 | Option | Purpose |
@@ -44,16 +46,18 @@ charts:
 | `last_contact_entity` | Timestamp sensor for the last successful report. |
 | `battery_level_entity` | Estimated charge from 0 to 100 percent. The badge shows the value as a percentage and fills its background proportionally. |
 | `battery_voltage_entity` | Voltage sensor with the `measurement` state class for mean statistics. |
+| `temperature_entity` | Optional temperature sensor for the hourly chart. Leave unset to hide its line and button. |
 | `charts.hourly` | Show hourly consumption for the last 24 elapsed hours. Defaults to `true`. |
 | `charts.daily` | Show the last 30 calendar days, including today. Defaults to `true`. |
 | `charts.monthly` | Show the last 12 calendar months, including this month. Defaults to `true`. |
 | `charts.voltage` | Show daily mean voltage for the last 30 calendar days. Defaults to `true`. |
+| `charts.temperature` | Show the blue temperature line by default when a sensor is configured. Defaults to `true`. |
 
-Use the four buttons on the card to change the current view. Set the defaults in the visual card editor or YAML. Hover or tap to inspect a period. You can also tab into a chart and use the arrow keys, Home and End. Labels are available in English and Hungarian.
+Use the buttons on the card to change the current view. The Temperature button controls the blue line on the hourly chart. The right axis uses the temperature sensor's unit. Set the defaults in the visual card editor or YAML. Hover or tap to inspect a period. You can also tab into a chart and use the arrow keys, Home and End. Labels are available in English and Hungarian.
 
 ### Recorder and timing
 
-Include the consumption and voltage sensors in Home Assistant Recorder. The hourly chart uses cumulative consumption history and clips the first and last hours to the rolling window. The day, month and voltage charts use Recorder statistics, so the latest period can lag the live readings and is marked as in progress. Empty periods appear as gaps. The card uses the time zone configured in Home Assistant and distinguishes repeated hours by their UTC offset.
+Include the consumption, voltage, and optional temperature sensors in Home Assistant Recorder. Temperature uses time-weighted averages of available readings in the same hourly intervals as consumption. Periods without a valid reading appear as gaps. The hourly chart uses cumulative consumption history and clips the first and last hours to the rolling window. The day, month and voltage charts use Recorder statistics, so the latest period can lag the live readings and is marked as in progress. Empty periods appear as gaps. The card uses the time zone configured in Home Assistant and distinguishes repeated hours by their UTC offset.
 
 The cumulative consumption sensor should track usage independently of manual corrections to the physical meter reading. With Gas Reader, consumption is assigned to the time Home Assistant receives the report. A delayed report may therefore show several hours of usage in a single hour. Hours with an available, unchanged counter show zero recorded usage.
 

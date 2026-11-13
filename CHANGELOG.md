@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.0]
+
+- Overlay an optional temperature sensor on the 24-hour gas consumption chart. The blue line shows hourly averages on its own axis and can be toggled independently.
+- Add a soft yellow gradient below the gas consumption line and a green gradient below the battery voltage line.
+
 ## [1.1.0]
 
 - Show hourly gas consumption for the last 24 hours, including reports from before midnight.

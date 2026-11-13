@@ -1,4 +1,4 @@
-import { CARD_TYPE, CHARTS, FIELDS, calendar, fetchSeries, normalizeConfig, numeric, sourceFor } from "./data.js";
+import { CARD_TYPE, CHARTS, FIELDS, calendar, fetchHistory, fetchSeries, hourlyTemperature, normalizeConfig, numeric, sourceFor } from "./data.js";
 import { element, icon } from "./dom.js";
 import { GasMeterEditor, loadEditorForm } from "./editor.js";
 import { Plot } from "./plot.js";
@@ -54,6 +54,12 @@ class GasMeterCard extends HTMLElement {
 
     this.controls = element("div", "chart-controls");
     this.controls.setAttribute("role", "group");
+    this.temperatureButton = element("button", "toggle");
+    this.temperatureButton.type = "button";
+    this.temperatureButton.dataset.chart = "temperature";
+    this.temperatureLabel = element("span");
+    this.temperatureButton.append(icon("mdi:thermometer"), this.temperatureLabel);
+    this.temperatureButton.addEventListener("click", () => this.toggleTemperature());
     const charts = element("div", "charts");
     for (const key of CHARTS) {
       const button = element("button", "toggle");
@@ -63,6 +69,7 @@ class GasMeterCard extends HTMLElement {
       button.append(icon(chartIcons[key]), buttonText);
       button.addEventListener("click", () => this.toggleChart(key));
       this.controls.append(button);
+      if (key === "hourly") this.controls.append(this.temperatureButton);
 
       const section = element("section", "chart");
       section.dataset.chart = key;
@@ -80,8 +87,14 @@ class GasMeterCard extends HTMLElement {
       const note = element("p", "note");
       note.hidden = key !== "hourly";
       section.append(head, status, plot.node, note);
+      const temperatureStatus = key === "hourly" ? element("p", "status") : null;
+      if (temperatureStatus) {
+        temperatureStatus.setAttribute("role", "status");
+        temperatureStatus.hidden = true;
+        section.append(temperatureStatus);
+      }
       charts.append(section);
-      this.views.set(key, { button, buttonText, section, heading, subtitle, status, plot, note });
+      this.views.set(key, { button, buttonText, section, heading, subtitle, status, plot, note, temperatureStatus });
     }
     content.append(header, this.controls, charts);
     card.append(content);
@@ -201,6 +214,12 @@ class GasMeterCard extends HTMLElement {
     const text = labels(this._hass);
     const locale = localeFor(this._hass);
     this.controls.setAttribute("aria-label", text.charts);
+    const temperatureId = this._config.temperature_entity;
+    const temperatureVisible = Boolean(temperatureId && this._visible.temperature);
+    this.temperatureButton.hidden = !temperatureId;
+    this.temperatureButton.disabled = !this._visible.hourly;
+    this.temperatureButton.setAttribute("aria-pressed", String(temperatureVisible && this._visible.hourly));
+    this.temperatureLabel.textContent = text.temperature;
     for (const [key, view] of this.views) {
       const visible = this._visible[key];
       const id = sourceFor(key, this._config);
@@ -213,19 +232,30 @@ class GasMeterCard extends HTMLElement {
       view.heading.textContent = text[key];
       view.subtitle.textContent = text[key + "Range"] + " · " + unit;
       if (key === "hourly") view.note.textContent = text.reportNote;
-      const points = view.result?.points;
-      const ready = points?.some(({ value }) => value !== null);
+      const { points, error, temperatureError } = view.result ?? {};
+      const showTemperature = key === "hourly" && temperatureVisible;
+      const temperatureUnit = showTemperature
+        ? this._hass.states?.[temperatureId]?.attributes?.unit_of_measurement ?? ""
+        : null;
+      const hasGas = points?.some(({ value }) => value !== null);
+      const hasTemperature = showTemperature && points?.some(({ temperature }) => Number.isFinite(temperature));
+      const ready = hasGas || hasTemperature;
+      if (view.temperatureStatus) {
+        const message = !showTemperature || !view.result ? "" : temperatureError ? text.temperatureError :
+          view.result.temperatureRequested && !hasTemperature ? text.temperatureEmpty : "";
+        view.temperatureStatus.textContent = message;
+        view.temperatureStatus.hidden = !message;
+      }
       view.plot.node.hidden = !ready;
-      view.status.hidden = Boolean(ready);
+      view.status.hidden = Boolean(hasGas || (ready && !error));
       if (ready) {
-        const appearance = JSON.stringify([locale, unit, this.scope.zone, this.dataset.themeMode, this._hass.selectedTheme]);
+        const appearance = JSON.stringify([locale, unit, temperatureUnit, this.scope.zone, this.dataset.themeMode, this._hass.selectedTheme]);
         if (view.plot.points !== points || view.appearance !== appearance) {
-          view.plot.setData(points, unit, locale, this.scope.zone, text);
+          view.plot.setData(points, unit, locale, this.scope.zone, text, temperatureUnit);
           view.appearance = appearance;
         }
-      } else {
-        view.status.textContent = !id ? text.configure : view.result?.error || typeof this._hass.callWS !== "function" ? text.error : points ? text.empty : text.loading;
       }
+      view.status.textContent = !id ? text.configure : error || typeof this._hass.callWS !== "function" ? text.error : points ? text.empty : text.loading;
     }
   }
 
@@ -238,16 +268,49 @@ class GasMeterCard extends HTMLElement {
     this.refresh(true);
   }
 
-  refresh(initial = false) {
+  toggleTemperature() {
+    this._visible.temperature = !this._visible.temperature;
+    this.renderCharts();
+    if (this._visible.temperature) {
+      // Refresh both series against the same time buckets.
+      this.views.get("hourly").request = undefined;
+      this.refresh(false, "hourly");
+    }
+  }
+
+  refresh(initial = false, onlyChart) {
     if (typeof this._hass.callWS !== "function") return;
     let dates;
     for (const [key, view] of this.views) {
+      if (onlyChart && key !== onlyChart) continue;
       const id = sourceFor(key, this._config);
-      if (!this._visible[key] || !id || view.request || (initial && view.result)) continue;
+      const temperatureId = key === "hourly" && this._visible.temperature ? this._config.temperature_entity : undefined;
+      if (!this._visible[key] || (!id && !temperatureId) || view.request || (initial && view.result)) continue;
       dates ??= calendar(this.scope.zone, Date.now());
-      const series = fetchSeries(this._hass, key, id, dates);
+      const series = key === "hourly"
+        ? this.loadHourly(id, temperatureId, dates)
+        : fetchSeries(this._hass, key, id, dates).then((points) => ({ points }));
       this.loadChart(key, view, series);
     }
+  }
+
+  async loadHourly(id, temperatureId, dates) {
+    const hass = this._hass;
+    const [gas, temperature] = await Promise.allSettled([
+      id ? fetchSeries(hass, "hourly", id, dates) : undefined,
+      temperatureId ? fetchHistory(hass, temperatureId, dates) : [],
+    ]);
+    const points = gas.value ?? dates.hourly.map((bucket) => ({ ...bucket, value: null }));
+    if (temperatureId) {
+      const values = hourlyTemperature(dates.hourly, temperature.value ?? [], dates.now);
+      points.forEach((point, index) => { point.temperature = values[index]; });
+    }
+    return {
+      points,
+      error: gas.status === "rejected",
+      temperatureRequested: Boolean(temperatureId),
+      temperatureError: temperature.status === "rejected",
+    };
   }
 
   async loadChart(key, view, series) {
@@ -255,7 +318,7 @@ class GasMeterCard extends HTMLElement {
     view.request = request;
     let result;
     try {
-      result = { points: await series };
+      result = await series;
     } catch {
       result = { error: true };
     }

@@ -2,7 +2,7 @@ export const CARD_TYPE = "ha-card-gas-meter";
 export const CHARTS = ["hourly", "daily", "monthly", "voltage"];
 export const FIELDS = [
   "meter_entity", "consumption_entity", "last_contact_entity",
-  "battery_level_entity", "battery_voltage_entity",
+  "battery_level_entity", "battery_voltage_entity", "temperature_entity",
 ];
 
 const minute = 60_000;
@@ -20,7 +20,10 @@ export function normalizeConfig(config) {
   }
   return {
     ...config,
-    charts: Object.fromEntries(CHARTS.map((key) => [key, config.charts?.[key] !== false])),
+    charts: {
+      ...Object.fromEntries(CHARTS.map((key) => [key, config.charts?.[key] !== false])),
+      temperature: config.charts?.temperature !== false,
+    },
   };
 }
 
@@ -101,12 +104,16 @@ export function calendar(zone, now) {
   return { now, hourly, daily, monthly, localDate };
 }
 
-export function hourlyValues(buckets, rows, now) {
-  const samples = rows.map((row) => ({
+function historySamples(rows, now) {
+  return rows.map((row) => ({
     time: (row.lc ?? row.lu) * 1000,
     value: numeric(row.s),
   })).filter(({ time }) => Number.isFinite(time) && time <= now)
     .sort((a, b) => a.time - b.time);
+}
+
+export function hourlyValues(buckets, rows, now) {
+  const samples = historySamples(rows, now);
 
   let index = 0;
   let previous = null;
@@ -129,6 +136,36 @@ export function hourlyValues(buckets, rows, now) {
   });
 }
 
+// Recorder logs state changes. Weight each reading by how long it was
+// current inside the bucket, skipping intervals with an unavailable state.
+export function hourlyTemperature(buckets, rows, now) {
+  const samples = historySamples(rows, now);
+  let index = 0;
+  let value = null;
+  return buckets.map(({ start, end }) => {
+    while (index < samples.length && samples[index].time <= start) {
+      value = samples[index++].value;
+    }
+    let cursor = start;
+    let weighted = 0;
+    let duration = 0;
+    while (index < samples.length && samples[index].time < end) {
+      const sample = samples[index++];
+      if (value !== null) {
+        weighted += value * (sample.time - cursor);
+        duration += sample.time - cursor;
+      }
+      cursor = sample.time;
+      value = sample.value;
+    }
+    if (value !== null) {
+      weighted += value * (end - cursor);
+      duration += end - cursor;
+    }
+    return duration ? weighted / duration : null;
+  });
+}
+
 export function statisticsValues(buckets, rows, calendar, field, period) {
   const values = new Map();
   for (const row of rows) {
@@ -148,22 +185,24 @@ export function sourceFor(key, config) {
   return key === "voltage" ? config.battery_voltage_entity : config.consumption_entity;
 }
 
+export async function fetchHistory(hass, id, dates) {
+  const result = await hass.callWS({
+    type: "history/history_during_period",
+    entity_ids: [id],
+    // Recorder labels the synthetic opening state with the request start.
+    start_time: new Date(dates.hourly[0].start - 1000).toISOString(),
+    end_time: new Date(dates.now).toISOString(),
+    include_start_time_state: true,
+    minimal_response: true,
+    no_attributes: true,
+    significant_changes_only: false,
+  });
+  return result[id] ?? [];
+}
+
 export async function fetchSeries(hass, key, id, dates) {
-  const iso = (time) => new Date(time).toISOString();
   if (key === "hourly") {
-    const result = await hass.callWS({
-      type: "history/history_during_period",
-      entity_ids: [id],
-      // Recorder labels the synthetic opening state with the request start.
-      // Fetch a baseline just before the 24-hour window.
-      start_time: iso(dates.hourly[0].start - 1000),
-      end_time: iso(dates.now),
-      include_start_time_state: true,
-      minimal_response: true,
-      no_attributes: true,
-      significant_changes_only: false,
-    });
-    return hourlyValues(dates.hourly, result[id] ?? [], dates.now);
+    return hourlyValues(dates.hourly, await fetchHistory(hass, id, dates), dates.now);
   }
   const period = key === "monthly" ? "month" : "day";
   const buckets = period === "month" ? dates.monthly : dates.daily;

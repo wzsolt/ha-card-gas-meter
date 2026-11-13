@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calendar, fetchSeries, hourlyValues, normalizeConfig, statisticsValues } from "../src/data.js";
+import { calendar, fetchSeries, hourlyTemperature, hourlyValues, normalizeConfig, statisticsValues } from "../src/data.js";
 
 const zone = "Europe/Budapest";
 const ms = Date.parse;
@@ -95,7 +95,7 @@ test("requests only the intended Recorder statistic and fetches an opening state
   const hass = { callWS: async (message) => { calls.push(message); return {}; } };
   const dates = calendar(zone, ms("2026-11-11T09:15:00Z"));
   const settings = normalizeConfig({ charts: { voltage: false } });
-  assert.deepEqual(settings.charts, { hourly: true, daily: true, monthly: true, voltage: false });
+  assert.deepEqual(settings.charts, { hourly: true, daily: true, monthly: true, voltage: false, temperature: true });
   await fetchSeries(hass, "hourly", "sensor.consumption", dates);
   await fetchSeries(hass, "monthly", "sensor.consumption", dates);
   await fetchSeries(hass, "voltage", "sensor.voltage", dates);
@@ -108,4 +108,20 @@ test("requests only the intended Recorder statistic and fetches an opening state
   assert.equal(calls[1].period, "month");
   assert.deepEqual(calls[2].types, ["mean"]);
   assert.deepEqual(calls[2].statistic_ids, ["sensor.voltage"]);
+});
+
+test("temperature averages use elapsed time and skip unavailable states", () => {
+  const dates = calendar("UTC", ms("2026-11-12T02:30:00Z"));
+  const values = hourlyTemperature(dates.hourly, [
+    row("-2", "2026-11-11T02:29:59Z", "lu"),
+    row("0", "2026-11-11T02:45:00Z"),
+    row("unavailable", "2026-11-11T03:00:00Z"),
+    row("4", "2026-11-11T04:15:00Z"),
+    row("8", "2026-11-11T04:30:00Z"),
+    row("10", "2026-11-12T02:15:00Z"),
+    row("99", "2026-11-12T02:31:00Z"),
+  ], dates.now);
+  assert.deepEqual(values.slice(0, 4), [-1, null, 20 / 3, 8]);
+  assert.equal(values.at(-1), 9);
+  assert.equal(normalizeConfig({ charts: { temperature: false } }).charts.temperature, false);
 });

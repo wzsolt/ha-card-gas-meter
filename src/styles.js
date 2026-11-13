@@ -75,7 +75,7 @@ h3 { font-size: 0.94rem; font-weight: 650; }
 .chip ha-icon, .toggle ha-icon { --mdc-icon-size: 16px; }
 .chip-copy { display: flex; gap: 5px; flex-wrap: wrap; }
 .chip-value { font-variant-numeric: tabular-nums; }
-.last_contact_entity, [data-chart="daily"] { --accent: var(--gas-blue); }
+.last_contact_entity, [data-chart="daily"], [data-chart="temperature"] { --accent: var(--gas-blue); }
 [data-chart="hourly"], [data-chart="monthly"] { --accent: var(--gas-amber); }
 [data-chart="voltage"], [data-level="good"] { --accent: var(--gas-green); }
 [data-level="low"] { --accent: var(--gas-red); }
@@ -92,6 +92,7 @@ h3 { font-size: 0.94rem; font-weight: 650; }
 .chart-heading ha-icon { --mdc-icon-size: 16px; }
 .subtitle { margin-top: 2px; }
 .plot { color: var(--accent); border: 0 solid var(--gas-grid); border-radius: 6px; }
+.temperature-color { color: var(--gas-blue); }
 canvas { display: block; width: 100%; height: 148px; touch-action: pan-y; }
 .note, .status, .readout { font-size: 0.75rem; color: var(--gas-muted); line-height: 1.4; }
 .readout { min-height: 1.4em; margin: 0 4px; font-variant-numeric: tabular-nums; }
