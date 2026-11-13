@@ -18,7 +18,7 @@ function range(values, padding) {
   return { start, end, step };
 }
 
-function drawLine(ctx, values, x, y, color, partials, area) {
+function drawLine(ctx, values, x, y, color, partials, baseline) {
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
   ctx.lineWidth = 2;
@@ -29,22 +29,38 @@ function drawLine(ctx, values, x, y, color, partials, area) {
     }
     let end = start + 1;
     ctx.beginPath();
-    ctx.moveTo(x(start), y(values[start]));
+    let crest = y(values[start]);
+    ctx.moveTo(x(start), crest);
     while (Number.isFinite(values[end])) {
-      ctx.lineTo(x(end), y(values[end]));
+      const height = y(values[end]);
+      crest = Math.min(crest, height);
+      ctx.lineTo(x(end), height);
       end++;
     }
-    ctx.stroke();
-    if (area && end - start > 1) {
-      ctx.lineTo(x(end - 1), area.base);
-      ctx.lineTo(x(start), area.base);
-      ctx.closePath();
+    if (baseline !== undefined && end - start > 1 && crest < baseline) {
+      const gradient = ctx.createLinearGradient(0, crest, 0, baseline);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, "transparent");
+
+      // Keep the outline path intact and fill underneath it before stroking.
+      const area = new Path2D();
+      area.moveTo(x(start), baseline);
+      for (let index = start; index < end; index++) {
+        area.lineTo(x(index), y(values[index]));
+      }
+      area.lineTo(x(end - 1), baseline);
+      area.closePath();
+
+      // Keep low portions visible even when an earlier spike sets the scale.
       ctx.save();
-      ctx.globalAlpha = 0.22;
-      ctx.fillStyle = area.gradient;
-      ctx.fill();
+      ctx.globalAlpha = 0.14;
+      ctx.fill(area);
+      ctx.globalAlpha = 0.30;
+      ctx.fillStyle = gradient;
+      ctx.fill(area);
       ctx.restore();
     }
+    ctx.stroke();
     start = end;
   }
   values.forEach((value, index) => {
@@ -239,11 +255,7 @@ export class Plot {
 
     const partials = this.points.map(({ partial }) => partial);
     if (primaryRange && line) {
-      const base = top + chartHeight;
-      const gradient = ctx.createLinearGradient(0, top, 0, base);
-      gradient.addColorStop(0, colors.line);
-      gradient.addColorStop(1, "transparent");
-      drawLine(ctx, values, x, y, colors.line, partials, { gradient, base });
+      drawLine(ctx, values, x, y, colors.line, partials, top + chartHeight);
     } else if (primaryRange) {
       ctx.fillStyle = colors.line;
       values.forEach((value, index) => {

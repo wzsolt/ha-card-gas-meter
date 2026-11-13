@@ -278,3 +278,43 @@ test("optional temperature overlay shares the hourly plot and can be toggled", {
     await browser.close();
   }
 });
+
+test("gas and voltage area gradients are visible below low readings in both themes", { timeout: 60_000 }, async () => {
+  const browser = await chromium.launch({ executablePath: process.env.GAS_METER_CHROMIUM });
+  try {
+    for (const dark of [false, true]) {
+      const page = await browser.newPage({ viewport: { width: 440, height: 820 }, colorScheme: dark ? "dark" : "light" });
+      await mount(page, config, dark);
+      const card = page.locator(tag);
+      for (const [key, peak, low] of [["hourly", 8, 2], ["voltage", 4.2, 4.05]]) {
+        await card.locator('section[data-chart="' + key + '"] canvas').waitFor();
+        const pixels = await card.evaluate((card, { key, peak, low }) => {
+          const { plot } = card.views.get(key);
+          const points = plot.points.map((point, index, { length }) => ({
+            ...point,
+            value: index === 0 ? peak : Math.abs(index / length - 0.5) < 0.1 ? null : low,
+          }));
+          plot.setData(points, plot.unit, "en", "Europe/Budapest", plot.text);
+          plot.select(null);
+          const canvas = plot.canvas;
+          const ratio = canvas.width / canvas.clientWidth;
+          const ctx = canvas.getContext("2d");
+          const read = (fraction, y) => {
+            const x = 46 + (canvas.clientWidth - 60) * fraction;
+            return Array.from(ctx.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data);
+          };
+          return { above: read(0.25, 86), upper: read(0.25, 107), lower: read(0.25, 115), gap: read(0.5, 107) };
+        }, { key, peak, low });
+        assert.equal(pixels.above[3], 0);
+        assert.equal(pixels.gap[3], 0);
+        assert.ok(pixels.upper[3] >= 38, JSON.stringify(pixels));
+        assert.ok(pixels.upper[3] > pixels.lower[3] && pixels.lower[3] > 0, JSON.stringify(pixels));
+        const [red, green, blue] = pixels.upper;
+        assert.ok(key === "hourly" ? red > green && green > blue : green > red && green > blue);
+      }
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+});

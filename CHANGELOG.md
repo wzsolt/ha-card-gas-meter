@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.1]
+
+- Make the yellow gas consumption and green battery voltage area fills visible, including below low readings after a peak.
+
 ## [1.2.0]
 
 - Overlay an optional temperature sensor on the 24-hour gas consumption chart. The blue line shows hourly averages on its own axis and can be toggled independently.
